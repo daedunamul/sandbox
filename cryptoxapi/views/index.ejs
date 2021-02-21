@@ -1,0 +1,92 @@
+<html>
+	<head>
+		<meta charset='utf-8'>
+		<title>trader</title>
+	</head>
+	<body>
+		<!-- Api 키 출력 -->
+		<table>
+			<tr>
+				<td></td>
+				<th>ViewAccessKey0</th>
+				<th>ViewAccessKey1</th>
+				<th>ViewAccessKey2</th>
+			</tr>
+			<tr>
+				<th>Upbit</th>
+				<td><%= Upbit[ 0 ].ViewAccessKey %></td>
+				<td><%= Upbit[ 1 ].ViewAccessKey %></td>
+				<td><%= Upbit[ 2 ].ViewAccessKey %></td>
+			</tr>
+			<tr>
+				<th>Bitstamp</th>
+				<td><%= Bitstamp[ 0 ].ViewAccessKey %></td>
+				<td><%= Bitstamp[ 1 ].ViewAccessKey %></td>
+				<td><%= Bitstamp[ 2 ].ViewAccessKey %></td>
+			</tr>
+			<tr>
+				<th>Kraken</th>
+				<td><%= Kraken[ 0 ].ViewAccessKey %></td>
+				<td><%= Kraken[ 1 ].ViewAccessKey %></td>
+				<td><%= Kraken[ 2 ].ViewAccessKey %></td>
+			</tr>
+		</table>
+		<form action = '/api_initKey' method = 'post'>
+			<p><input type = 'submit' value='Api 키 초기화'></p>
+		</form>
+		
+		<!-- Api 키 입력 -->
+		<form action = '/api_getKey' method = 'post'>
+			<p>
+				<select name = "apiExchange">
+					<option value = "Upbit">Upbit</option>
+					<option value = "Bitstamp">Bitstamp</option>
+					<option value = "Kraken">Kraken</option>
+				</select>
+			</p>
+			<p>
+				<input type = 'text' name = 'AccessKey0' placeholder = 'AccessKey0' >
+				<input type = 'text' name = 'AccessKey1' placeholder = 'AccessKey1' >
+				<input type = 'text' name = 'AccessKey2' placeholder = 'AccessKey2' >
+			</p>
+			<p>
+				<input type = 'text' name = 'SecretKey0' placeholder = 'SecretKey0' >
+				<input type = 'text' name = 'SecretKey1' placeholder = 'SecretKey1' >
+				<input type = 'text' name = 'SecretKey2' placeholder = 'SecretKey2' >
+			</p>
+			<p><input type = 'submit'></p>
+		</form>
+		
+		<!-- 계좌 조회 -->
+		<table>
+			<tr>
+				<td>Ex</td>
+				<th>#화폐</th>
+				<th>#수량</th>
+				<th>#잠긴 수량</th>
+				<th>#매수 평균가</th>
+			</tr>
+			<tr>
+				<td colspan="5">Upbit</td>
+			</tr>
+			<% for( var Index in Upbit ) { %>
+				<tr>
+					<td colspan="5" style="text-align : center ;">Key<%= Index %></td>
+				</tr>
+				<% for( var AccountIndex in Upbit[ Index ].Account ) { %>
+					<tr>
+						<td></td>
+						<td><%= Upbit[ Index ].Account[ AccountIndex ].currency %></td>
+						<td><%= Upbit[ Index ].Account[ AccountIndex ].balance %></td>
+						<td><%= Upbit[ Index ].Account[ AccountIndex ].locked %></td>
+						<td><%= Upbit[ Index ].Account[ AccountIndex ].avg_buy_price %></td>
+					</tr>
+				<% } %>
+			<% } %>
+		</table>
+		<form action = '/api_update' method = 'post'>
+			<p><input type = 'submit' value='업데이트'></p>
+		</form>
+		
+	</body>
+</html>
