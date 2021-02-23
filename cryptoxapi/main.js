@@ -3,74 +3,19 @@ const pkExpress = require( 'express' ) ;
 const pkBodyParser = require( 'body-parser' ) ;
 const pkEjs = require( 'ejs' ) ;
 
+const pkFs = require( 'fs' ) ;
 const pkRequest = require( 'request' ) ;
 const pkJwt = require( 'jsonwebtoken' ) ;
 const { v4 : pkUuidv4 } = require( 'uuid' ) ;
+const pkQueryString = require( 'querystring' ) ;
+const pkCrypto = require( 'crypto' ) ;
 
 // globals
 var gApp = pkExpress(  ) ;
-
-var gApiObject = new Object(  ) ;
+var gApiObject = null ;
+var gCount ;
 
 // globals functions
-function g_alloc(  )
-{
-	gApiObject.Upbit = new Array(  ) ;
-	gApiObject.Upbit[ 0 ] = new Object(  ) ;
-	gApiObject.Upbit[ 1 ] = new Object(  ) ;
-	gApiObject.Upbit[ 2 ] = new Object(  ) ;
-
-	gApiObject.Bitstamp = new Array(  ) ;
-	gApiObject.Bitstamp[ 0 ] = new Object(  ) ;
-	gApiObject.Bitstamp[ 1 ] = new Object(  ) ;
-	gApiObject.Bitstamp[ 2 ] = new Object(  ) ;
-	
-	gApiObject.Kraken = new Array(  ) ;
-	gApiObject.Kraken[ 0 ] = new Object(  ) ;
-	gApiObject.Kraken[ 1 ] = new Object(  ) ;
-	gApiObject.Kraken[ 2 ] = new Object(  ) ;
-}
-function g_init(  )
-{
-	// Upbit
-	gApiObject.Upbit[ 0 ].ViewAccessKey = null ;
-	gApiObject.Upbit[ 0 ].ViewSecretKey = null ;
-	gApiObject.Upbit[ 0 ].Account = null ;
-	
-	gApiObject.Upbit[ 1 ].ViewAccessKey = null ;
-	gApiObject.Upbit[ 1 ].ViewSecretKey = null ;
-	gApiObject.Upbit[ 1 ].Account = null ;
-	
-	gApiObject.Upbit[ 2 ].ViewAccessKey = null ;
-	gApiObject.Upbit[ 2 ].ViewSecretKey = null ;
-	gApiObject.Upbit[ 2 ].Account = null ;
-	
-	// Bitstamp
-	gApiObject.Bitstamp[ 0 ].ViewAccessKey = null ;
-	gApiObject.Bitstamp[ 0 ].ViewSecretKey = null ;
-	gApiObject.Bitstamp[ 0 ].Account = null ;
-	
-	gApiObject.Bitstamp[ 1 ].ViewAccessKey = null ;
-	gApiObject.Bitstamp[ 1 ].ViewSecretKey = null ;
-	gApiObject.Bitstamp[ 1 ].Account = null ;
-	
-	gApiObject.Bitstamp[ 2 ].ViewAccessKey = null ;
-	gApiObject.Bitstamp[ 2 ].ViewSecretKey = null ;
-	gApiObject.Bitstamp[ 2 ].Account = null ;
-	
-	// Kraken
-	gApiObject.Kraken[ 0 ].ViewAccessKey = null ;
-	gApiObject.Kraken[ 0 ].ViewSecretKey = null ;
-	gApiObject.Kraken[ 0 ].Account = null ;
-	
-	gApiObject.Kraken[ 1 ].ViewAccessKey = null ;
-	gApiObject.Kraken[ 1 ].ViewSecretKey = null ;
-	gApiObject.Kraken[ 1 ].Account = null ;
-	
-	gApiObject.Kraken[ 2 ].ViewAccessKey = null ;
-	gApiObject.Kraken[ 2 ].ViewSecretKey = null ;
-	gApiObject.Kraken[ 2 ].Account = null ;
-}
 function g_checkKey( AccessKey , SecretKey )
 {
 	if( AccessKey == '' )
@@ -84,7 +29,7 @@ function g_getTokenUpbit( AccessKey , SecretKey )
 	var Payload = 
 	{
 		access_key : AccessKey , 
-		nonce : pkUuidv4(  ) 
+		nonce : pkUuidv4(  )
 	} ;
 	
 	return pkJwt.sign( Payload , SecretKey ) ;
@@ -95,154 +40,58 @@ gApp.set( "view engine" , "ejs" ) ;
 gApp.use( pkExpress.static( __dirname + '/' ) ) ;
 gApp.use( pkBodyParser.urlencoded( { extended : false } ) ) ;
 
-g_alloc(  ) ;
-g_init(  ) ;
-
 // routings
 gApp.get
 ( 
 	'/' , 
 	( Req , Res ) => 
 	{
-		Res.render( "index" , gApiObject ) ;
-	}
-) ;
-
-gApp.post
-(
-	'/api_initKey' , 
-	( Req , Res ) => 
-	{
-		g_init(  ) ;
-		Res.render( "index" , gApiObject ) ;
-	}
-) ;
-gApp.post
-(
-	'/api_getKey' , 
-	( Req , Res ) => 
-	{
-		switch( Req.body.apiExchange )
-		{
-			case 'Upbit' : 				
-				if( g_checkKey( Req.body.AccessKey0 , Req.body.SecretKey0 ) )
-				{
-					gApiObject.Upbit[ 0 ].ViewAccessKey = Req.body.AccessKey0 ;
-					gApiObject.Upbit[ 0 ].ViewSecretKey = Req.body.SecretKey0 ;
-				}
+		pkFs.readFile
+		(
+			'./Key.json' , 
+			'utf8' , 
+			function( Err , Data )
+			{
+				if( Err )
+					gApiObject = null ;
 				else
-				{
-					gApiObject.Upbit[ 0 ].ViewAccessKey = null ;
-					gApiObject.Upbit[ 0 ].ViewSecretKey = null ;
-				}
-					
-				
-				if( g_checkKey( Req.body.AccessKey1 , Req.body.SecretKey1 ) )
-				{
-
-					gApiObject.Upbit[ 1 ].ViewAccessKey = Req.body.AccessKey1 ;
-					gApiObject.Upbit[ 1 ].ViewSecretKey = Req.body.SecretKey1 ;
-				}
-				else
-				{
-					gApiObject.Upbit[ 1 ].ViewAccessKey = null ;
-					gApiObject.Upbit[ 1 ].ViewSecretKey = null ;
-				}
-				
-				if( g_checkKey( Req.body.AccessKey2 , Req.body.SecretKey2 ) )
-				{
-					gApiObject.Upbit[ 2 ].ViewAccessKey = Req.body.AccessKey2 ;
-					gApiObject.Upbit[ 2 ].ViewSecretKey = Req.body.SecretKey2 ;
-				}
-				else
-				{
-					gApiObject.Upbit[ 2 ].ViewAccessKey = null ;
-					gApiObject.Upbit[ 2 ].ViewSecretKey = null ;
-				}
-			break ;
-			case 'Bitstamp' : 
-				if( g_checkKey( Req.body.AccessKey0 , Req.body.SecretKey0 ) )
-				{
-					gApiObject.Bitstamp[ 0 ].ViewAccessKey = Req.body.AccessKey0 ;
-					gApiObject.Bitstamp[ 0 ].ViewSecretKey = Req.body.SecretKey0 ;
-				}
-				else
-				{
-					gApiObject.Bitstamp[ 0 ].ViewAccessKey = null ;
-					gApiObject.Bitstamp[ 0 ].ViewSecretKey = null ;
-				}
-					
-				
-				if( g_checkKey( Req.body.AccessKey1 , Req.body.SecretKey1 ) )
-				{
-
-					gApiObject.Bitstamp[ 1 ].ViewAccessKey = Req.body.AccessKey1 ;
-					gApiObject.Bitstamp[ 1 ].ViewSecretKey = Req.body.SecretKey1 ;
-				}
-				else
-				{
-					gApiObject.Bitstamp[ 1 ].ViewAccessKey = null ;
-					gApiObject.Bitstamp[ 1 ].ViewSecretKey = null ;
-				}
-				
-				if( g_checkKey( Req.body.AccessKey2 , Req.body.SecretKey2 ) )
-				{
-					gApiObject.Bitstamp[ 2 ].ViewAccessKey = Req.body.AccessKey2 ;
-					gApiObject.Bitstamp[ 2 ].ViewSecretKey = Req.body.SecretKey2 ;
-				}
-				else
-				{
-					gApiObject.Bitstamp[ 2 ].ViewAccessKey = null ;
-					gApiObject.Bitstamp[ 2 ].ViewSecretKey = null ;
-				}
-			break ;
-			case 'Kraken' : 
-				if( g_checkKey( Req.body.AccessKey0 , Req.body.SecretKey0 ) )
-				{
-					gApiObject.Kraken[ 0 ].ViewAccessKey = Req.body.AccessKey0 ;
-					gApiObject.Kraken[ 0 ].ViewSecretKey = Req.body.SecretKey0 ;
-				}
-				else
-				{
-					gApiObject.Kraken[ 0 ].ViewAccessKey = null ;
-					gApiObject.Kraken[ 0 ].ViewSecretKey = null ;
-				}
-					
-				
-				if( g_checkKey( Req.body.AccessKey1 , Req.body.SecretKey1 ) )
-				{
-
-					gApiObject.Kraken[ 1 ].ViewAccessKey = Req.body.AccessKey1 ;
-					gApiObject.Kraken[ 1 ].ViewSecretKey = Req.body.SecretKey1 ;
-				}
-				else
-				{
-					gApiObject.Kraken[ 1 ].ViewAccessKey = null ;
-					gApiObject.Kraken[ 1 ].ViewSecretKey = null ;
-				}
-				
-				if( g_checkKey( Req.body.AccessKey2 , Req.body.SecretKey2 ) )
-				{
-					gApiObject.Kraken[ 2 ].ViewAccessKey = Req.body.AccessKey2 ;
-					gApiObject.Kraken[ 2 ].ViewSecretKey = Req.body.SecretKey2 ;
-				}
-				else
-				{
-					gApiObject.Kraken[ 2 ].ViewAccessKey = null ;
-					gApiObject.Kraken[ 2 ].ViewSecretKey = null ;
-				}
-			break ;
-		}
+					gApiObject = JSON.parse( Data ) ;
+			}
+		) ;
 		
-		Res.render( "index" , gApiObject ) ;
+		var Context = 
+		{
+			ApiObject : gApiObject
+		} ;
+		Res.render( "index" , Context ) ;
 	}
 ) ;
+
+gApp.post
+(
+	'/api_placeOrder' , 
+	( Req , Res ) => 
+	{
+		
+		var Context = 
+		{
+			ApiObject : gApiObject
+		} ;
+		Res.render( "index" , Context ) ;
+	}
+)
+
 gApp.post
 (
 	'/api_update' , 
 	( Req , Res ) => 
 	{
-		Res.render( "index" , gApiObject ) ;
+		
+		var Context = 
+		{
+			ApiObject : gApiObject
+		} ;
+		Res.render( "index" , Context ) ;
 	}
 )
 
@@ -259,21 +108,28 @@ gApp.listen
 // sub functions
 function requestAccount(  )
 {
+	if( gApiObject == null )
+		return ;
+	
 	var Options ;
 	var Token ;
 	
 	console.log( "Updating the accounts." ) ;
 	
 	// Upbit
-	if( gApiObject.Upbit[ 0 ].ViewAccessKey != null )
+	for( gCount in gApiObject.Upbit )
 	{
-		Token = g_getTokenUpbit( gApiObject.Upbit[ 0 ].ViewAccessKey , gApiObject.Upbit[ 0 ].ViewSecretKey ) ;
+		if( gApiObject.Upbit[ gCount ].Name == null )
+			continue ;
+		
+		Token = g_getTokenUpbit( gApiObject.Upbit[ gCount ].AccessKey , gApiObject.Upbit[ gCount ].SecretKey ) ;
 		Options = 
 		{
 			method : "GET" , 
 			url : "https://api.upbit.com/v1/accounts" , 
-			headers : { Authorization: `Bearer ${Token}` }
+			headers : { Authorization : `Bearer ${Token}` }
 		} ;
+
 		pkRequest
 		( 
 			Options , 
@@ -284,82 +140,79 @@ function requestAccount(  )
 				
 				var AccountObject = JSON.parse( Body ) ;
 				
-				gApiObject.Upbit[ 0 ].Account = new Array(  ) ;
-				for( var Index in AccountObject )
+				gApiObject.Upbit[ gCount ].AccountInfo = new Array(  ) ;
+				for( var AccountIndex in AccountObject )
 				{
-					gApiObject.Upbit[ 0 ].Account[ Index ] = new Object(  ) ;
-					gApiObject.Upbit[ 0 ].Account[ Index ].currency = AccountObject[ Index ].currency ;
-					gApiObject.Upbit[ 0 ].Account[ Index ].balance = AccountObject[ Index ].balance ;
-					gApiObject.Upbit[ 0 ].Account[ Index ].locked = AccountObject[ Index ].locked ;
-					gApiObject.Upbit[ 0 ].Account[ Index ].avg_buy_price = AccountObject[ Index ].avg_buy_price ;
-				}
-			}
-		) ;
-	}
-	if( gApiObject.Upbit[ 1 ].ViewAccessKey != null )
-	{
-		Token = g_getTokenUpbit( gApiObject.Upbit[ 1 ].ViewAccessKey , gApiObject.Upbit[ 1 ].ViewSecretKey ) ;
-		Options = 
-		{
-			method : "GET" , 
-			url : "https://api.upbit.com/v1/accounts" , 
-			headers : { Authorization: `Bearer ${Token}` }
-		} ;
-		pkRequest
-		( 
-			Options , 
-			( Err , Res , Body ) => 
-			{
-				if( Err )
-					throw new Error( Err ) ;
-				
-				var AccountObject = JSON.parse( Body ) ;
-				
-				gApiObject.Upbit[ 1 ].Account = new Array(  ) ;
-				for( var Index in AccountObject )
-				{
-					gApiObject.Upbit[ 1 ].Account[ Index ] = new Object(  ) ;
-					gApiObject.Upbit[ 1 ].Account[ Index ].currency = AccountObject[ Index ].currency ;
-					gApiObject.Upbit[ 1 ].Account[ Index ].balance = AccountObject[ Index ].balance ;
-					gApiObject.Upbit[ 1 ].Account[ Index ].locked = AccountObject[ Index ].locked ;
-					gApiObject.Upbit[ 1 ].Account[ Index ].avg_buy_price = AccountObject[ Index ].avg_buy_price ;
-				}
-			}
-		) ;
-	}
-	if( gApiObject.Upbit[ 2 ].ViewAccessKey != null )
-	{
-		Token = g_getTokenUpbit( gApiObject.Upbit[ 2 ].ViewAccessKey , gApiObject.Upbit[ 2 ].ViewSecretKey ) ;
-		Options = 
-		{
-			method : "GET" , 
-			url : "https://api.upbit.com/v1/accounts" , 
-			headers : { Authorization: `Bearer ${Token}` }
-		} ;
-		pkRequest
-		( 
-			Options , 
-			( Err , Res , Body ) => 
-			{
-				if( Err )
-					throw new Error( Err ) ;
-				
-				var AccountObject = JSON.parse( Body ) ;
-				
-				gApiObject.Upbit[ 2 ].Account = new Array(  ) ;
-				for( var Index in AccountObject )
-				{
-					gApiObject.Upbit[ 2 ].Account[ Index ] = new Object(  ) ;
-					gApiObject.Upbit[ 2 ].Account[ Index ].currency = AccountObject[ Index ].currency ;
-					gApiObject.Upbit[ 2 ].Account[ Index ].balance = AccountObject[ Index ].balance ;
-					gApiObject.Upbit[ 2 ].Account[ Index ].locked = AccountObject[ Index ].locked ;
-					gApiObject.Upbit[ 2 ].Account[ Index ].avg_buy_price = AccountObject[ Index ].avg_buy_price ;
+					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ] = new Object(  ) ;
+					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].currency = AccountObject[ AccountIndex ].currency ;
+					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].balance = AccountObject[ AccountIndex ].balance ;
+					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].locked = AccountObject[ AccountIndex ].locked ;
+					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].avg_buy_price = AccountObject[ AccountIndex ].avg_buy_price ;
 				}
 			}
 		) ;
 	}
 		
 	// Bitstamp
-	
-	// Kraken
+	for( gCount in gApiObject.Bitstamp )
+	{
+		if( gApiObject.Bitstamp[ gCount ].Name == null )
+			continue ;
+		
+		var Headers = 
+		{
+			'X-Auth' : 'BITSTAMP ' + gApiObject.Bitstamp[ gCount ].AccessKey , 
+			'X-Auth-Signature' : null , 
+			'X-Auth-Nonce' : String( pkUuidv4(  ) ) , 
+			'X-Auth-Timestamp' : String( Date.now(  ) ) , 
+			'X-Auth-Version' : 'v2' 
+		} ;
+		var Message = Headers[ 'X-Auth' ] + 
+			'POST' + 
+			'www.bitstamp.net' + 
+			'/api/v2/balance/' + 
+			'' + 
+			Headers[ 'X-Auth-Nonce' ] + 
+			Headers[ 'X-Auth-Timestamp' ] + 
+			Headers[ 'X-Auth-Version' ] ;
+		var Signature = pkCrypto.createHmac( 'sha256' , gApiObject.Bitstamp[ gCount ].SecretKey ).update( Message ).digest( 'hex' ) ;
+		
+		Headers[ 'X-Auth-Signature' ] = Signature ;
+		Options = 
+		{
+			method : "POST" , 
+			url : "https://www.bitstamp.net/api/v2/balance/" , 
+			headers : Headers 
+		} ;
+		
+		pkRequest
+		( 
+			Options , 
+			( Err , Res , Body ) => 
+			{
+				if( Err )
+					throw new Error( Err ) ;
+				
+				var BalanceInfo = JSON.parse( Body ) ;
+				var AssetCount = 0 ;
+				
+				gApiObject.Bitstamp[ gCount ].AccountInfo = new Array(  ) ;
+				for( var Key in BalanceInfo )
+				{
+					var Ticker = Key.split( '_' )[ 0 ] ;
+					var Tag = Key.split( '_' )[ 1 ] ;
+					
+					if( Tag == 'balance' && BalanceInfo[ Key ] > 0.0 )
+					{
+						gApiObject.Bitstamp[ gCount ].AccountInfo[ AssetCount ] = new Object(  ) ;
+						gApiObject.Bitstamp[ gCount ].AccountInfo[ AssetCount ].Ticker = Ticker ;
+						gApiObject.Bitstamp[ gCount ].AccountInfo[ AssetCount ].Balance = BalanceInfo[ Key ] ;
+						gApiObject.Bitstamp[ gCount ].AccountInfo[ AssetCount ].Locked = BalanceInfo[ Key ] - BalanceInfo[ Ticker + '_available' ] ;
+						
+						AssetCount ++ ;
+					}
+				}
+			}
+		) ;
+	}
 }
