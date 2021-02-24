@@ -4,44 +4,107 @@
 		<title>trader</title>
 	</head>
 	<body>
-		<!-- 매매 -->
-		<form action='/api_placeOrder' methode='post'>
+		<!-- 주문 -->
+		<form action='/api_placeOrder' methode='get'>
 			<p>
 				<input type="text" name="Price" placeholder="가격">
 				<input type="text" name="Size" placeholder="수량">
 				<input type="text" name="Interval" placeholder="시간 간격(1초 단위)">
 			</p>
 			<p>
-				<select id='OrderType'>
+				<select name='OrderType'>
 					<option value="Limit">지정가</option>
 					<option value="Market">시장가</option>
 				</select>
-				<select id='OrderFlag'>
+				<select name='OrderFlag'>
 					<option value="Buy">매수</option>
 					<option value="Sell">매도</option>
 				</select>
-				<select id='OrderPlaceType'>
+				<select name='OrderPlaceType'>
 					<option value="Instant">한번 주문</option>
-					<option value="IntervalTime">시간 차 자동 주문</option>
+					<option value="Interval">시간 차 자동 주문</option>
 				</select>
-				<select id='OrderPlacer'>
+				<select name='OrderPlacer'>
 					<% if( ApiObject != null ) { %>
 						<% for( var Index in ApiObject.Upbit ) { %>
 							<% if( ApiObject.Upbit[ Index ].Name != null ) { %>
-								<option value=<%= 'Upbit_' + String( Index ) %>><%= 'Upbit_' + ApiObject.Upbit[ Index ].Name %></option>
+								<option value=<%= 'Upbit_' + String( Index ) + '_' + String( Index ) %>><%= 'Upbit_' + ApiObject.Upbit[ Index ].Name %></option>
 							<% } %>
 						<% } %>
 						<% for( var Index in ApiObject.Bitstamp ) { %>
 							<% if( ApiObject.Bitstamp[ Index ].Name != null ) { %>
-								<option value=<%= 'Bitstamp_' + String( Index ) %>><%= 'Bitstamp_' + ApiObject.Bitstamp[ Index ].Name %></option>
+								<option value=<%= 'Bitstamp_' + String( Index ) + '_' + String( Index ) %>><%= 'Bitstamp_' + ApiObject.Bitstamp[ Index ].Name %></option>
 							<% } %>
 						<% } %>
 					<% } %>
 				</select>
 				다시 한번 확인해주세요.
-				<input type="submit" value="실행">
+				<input type="submit" value="주문 실행">
 			</p>
 		</form>
+		
+		<!-- 주문 모두 취소 -->
+		<form action='/api_cancelAllOrders' methode='get'>
+			<input type="submit" value="모든 주문 취소">
+		</form>
+		
+		<!-- 주문 조회 -->
+		<table>
+			<tr>
+				<th>계좌</th>
+				<th>#유형</th>
+				<th>#매매</th>
+				<th>#실행 유형</th>
+				<th>#가격</th>
+				<th>#수량</th>
+				<th>#시간 간격</th>
+				<td></td>
+			</tr>
+			<% if( ApiObject != null ) { %>
+				<% for( var Index in ApiObject.Upbit ) { %>
+					<% if( ApiObject.Upbit[ Index ].Name != null ) { %>
+						<% if( ApiObject.Upbit[ Index ].Order != null ) { %>
+							<tr>
+								<td><%= "Upbit_" + ApiObject.Upbit[ Index ].Name %></td>
+								<td><%= ApiObject.Upbit[ Index ].Order.Type %></td>
+								<td><%= ApiObject.Upbit[ Index ].Order.Flag %></td>
+								<td><%= ApiObject.Upbit[ Index ].Order.PlaceType %></td>
+								<td><%= ApiObject.Upbit[ Index ].Order.Price %></td>
+								<td><%= ApiObject.Upbit[ Index ].Order.Size %></td>
+								<td><%= ApiObject.Upbit[ Index ].Order.Interval %></td>
+								<td>
+									<form action='/api_cancelOrder' +  methode='get'>
+										<input type="hidden" name="CancelPlacer" value=<%= 'Upbit_' + String( Index ) %>> 
+										<input type="submit" value="취소">
+									</form>
+								</td>
+							</tr>
+						<% } %>
+					<% } %>
+				<% } %>
+				<% for( var Index in ApiObject.Bitstamp ) { %>
+					<% if( ApiObject.Bitstamp[ Index ].Name != null ) { %>
+						<% if( ApiObject.Bitstamp[ Index ].Order != null ) { %>
+							<tr>
+								<td><%= "Bitstamp_" + ApiObject.Bitstamp[ Index ].Name %></td>
+								<td><%= ApiObject.Bitstamp[ Index ].Order.Type %></td>
+								<td><%= ApiObject.Bitstamp[ Index ].Order.Flag %></td>
+								<td><%= ApiObject.Bitstamp[ Index ].Order.PlaceType %></td>
+								<td><%= ApiObject.Bitstamp[ Index ].Order.Price %></td>
+								<td><%= ApiObject.Bitstamp[ Index ].Order.Size %></td>
+								<td><%= ApiObject.Bitstamp[ Index ].Order.Interval %></td>
+								<td>
+									<form action='/api_cancelOrder' +  methode='get'>
+										<input type="hidden" name="CancelPlacer" value=<%= 'Bitstamp_' + String( Index ) %>> 
+										<input type="submit" value="취소">
+									</form>
+								</td>
+							</tr>
+						<% } %>
+					<% } %>
+				<% } %>
+			<% } %>
+		</table>
 		
 		<!-- 계좌 조회 -->
 		<form action='/api_update' method='post'>
@@ -49,7 +112,7 @@
 		</form>
 		<table>
 			<tr>
-				<td>X</td>
+				<th>X</th>
 				<th>#화폐</th>
 				<th>#수량</th>
 				<th>#잠긴 수량</th>
@@ -66,10 +129,10 @@
 						<% if( ApiObject.Upbit[ Index ].AccountInfo != null ) { %>
 							<tr>
 								<td></td>
-								<td><%= ApiObject.Upbit[ Index ].AccountInfo[ AccountIndex ].currency %></td>
-								<td><%= ApiObject.Upbit[ Index ].AccountInfo[ AccountIndex ].balance %></td>
-								<td><%= ApiObject.Upbit[ Index ].AccountInfo[ AccountIndex ].locked %></td>
-								<td><%= ApiObject.Upbit[ Index ].AccountInfo[ AccountIndex ].avg_buy_price %></td>
+								<td><%= ApiObject.Upbit[ Index ].AccountInfo[ AccountIndex ].Ticker %></td>
+								<td><%= ApiObject.Upbit[ Index ].AccountInfo[ AccountIndex ].Balance %></td>
+								<td><%= ApiObject.Upbit[ Index ].AccountInfo[ AccountIndex ].Locked %></td>
+								<td><%= ApiObject.Upbit[ Index ].AccountInfo[ AccountIndex ].AvgPrice %></td>
 							</tr>
 						<% } %>
 					<% } %>
