@@ -41,6 +41,7 @@ gApp.use( pkExpress.static( __dirname + '/' ) ) ;
 gApp.use( pkBodyParser.urlencoded( { extended : false } ) ) ;
 
 // routings
+// entry
 gApp.get
 ( 
 	'/' , 
@@ -66,12 +67,78 @@ gApp.get
 		Res.render( "index" , Context ) ;
 	}
 ) ;
+gApp.listen
+( 
+	7777 , 
+	(  ) => 
+	{
+		console.log( "I'm listening." ) ;
+		setInterval( requestAccount , 1000 ) ;
+	}
+) ;
 
-gApp.post
+// orders
+gApp.get
 (
 	'/api_placeOrder' , 
 	( Req , Res ) => 
 	{
+		if( gApiObject == null )
+			return ;
+		
+		var OrderPlacerX = Req.query.OrderPlacer.split( '_' )[ 0 ] ;
+		var OrderPlacerIndex = parseInt( Req.query.OrderPlacer.split( '_' )[ 1 ] ) ;
+		
+		requestOrder( Req.query , OrderPlacerX , OrderPlacerIndex ) ;
+		
+		var Context = 
+		{
+			ApiObject : gApiObject
+		} ;
+		Res.render( "index" , Context ) ;
+	}
+)
+gApp.get
+(
+	'/api_cancelOrder' , 
+	( Req , Res ) => 
+	{
+		var CancelPlacerX = Req.query.CancelPlacer.split( '_' )[ 0 ] ;
+		var CancelPlacerIndex = parseInt( Req.query.CancelPlacer.split( '_' )[ 1 ] ) ;
+		
+		cancelOrder( CancelPlacerX , CancelPlacerIndex ) ;
+		
+		var Context = 
+		{
+			ApiObject : gApiObject
+		} ;
+		Res.render( "index" , Context ) ;
+	}
+)
+gApp.get
+(
+	'/api_cancelAllOrders' , 
+	( Req , Res ) => 
+	{
+		if( gApiObject == null )
+			return ;
+		
+		for( var Key in gApiObject )
+		{
+			for( var Index in gApiObject[ Key ] )
+			{
+				if( gApiObject[ Key ][ Index ].Order != null )
+				{
+					if( gApiObject[ Key ][ Index ].Order.IntervalId != null )
+					{
+						clearInterval( gApiObject[ Key ][ Index ].Order.IntervalId ) ;
+						gApiObject[ Key ][ Index ].Order.IntervalId = null ;
+					}	
+					console.log( Key + '_' + gApiObject[ Key ][ Index ].Name + " 계좌의 주문을 취소하였습니다." ) ;
+					gApiObject[ Key ][ Index ].Order = null ;
+				}
+			}
+		}
 		
 		var Context = 
 		{
@@ -81,6 +148,7 @@ gApp.post
 	}
 )
 
+// updates
 gApp.post
 (
 	'/api_update' , 
@@ -94,16 +162,6 @@ gApp.post
 		Res.render( "index" , Context ) ;
 	}
 )
-
-gApp.listen
-( 
-	7777 , 
-	(  ) => 
-	{
-		console.log( "I'm listening." ) ;
-		setInterval( requestAccount , 1000 ) ;
-	}
-) ;
 
 // sub functions
 function requestAccount(  )
@@ -144,10 +202,10 @@ function requestAccount(  )
 				for( var AccountIndex in AccountObject )
 				{
 					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ] = new Object(  ) ;
-					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].currency = AccountObject[ AccountIndex ].currency ;
-					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].balance = AccountObject[ AccountIndex ].balance ;
-					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].locked = AccountObject[ AccountIndex ].locked ;
-					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].avg_buy_price = AccountObject[ AccountIndex ].avg_buy_price ;
+					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].Ticker = AccountObject[ AccountIndex ].currency ;
+					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].Balance = AccountObject[ AccountIndex ].balance ;
+					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].Locked = AccountObject[ AccountIndex ].locked ;
+					gApiObject.Upbit[ gCount ].AccountInfo[ AccountIndex ].AvgPrice = AccountObject[ AccountIndex ].avg_buy_price ;
 				}
 			}
 		) ;
@@ -215,4 +273,68 @@ function requestAccount(  )
 			}
 		) ;
 	}
+}
+function requestOrder( FormData , PlacerX , PlacerIndex )
+{
+	if( gApiObject[ PlacerX ][ PlacerIndex ].Order != null )
+	{
+		console.log( "실행 중인 주문입니다." ) ;
+		return ;
+	}
+	
+	gApiObject[ PlacerX ][ PlacerIndex ].Order = new Object(  ) ;
+	gApiObject[ PlacerX ][ PlacerIndex ].Order.Type = FormData.OrderType ;
+	gApiObject[ PlacerX ][ PlacerIndex ].Order.Flag = FormData.OrderFlag ;
+	gApiObject[ PlacerX ][ PlacerIndex ].Order.PlaceType = FormData.OrderPlaceType ;
+	
+	if( FormData.OrderType == 'Limit' )
+		gApiObject[ PlacerX ][ PlacerIndex ].Order.Price = FormData.Price ;
+	else if( FormData.OrderType == 'Market' )
+		gApiObject[ PlacerX ][ PlacerIndex ].Order.Price = null ;
+	gApiObject[ PlacerX ][ PlacerIndex ].Order.Size = FormData.Size ;
+	if( FormData.OrderPlaceType == 'Instant' )
+	{
+		gApiObject[ PlacerX ][ PlacerIndex ].Order.Interval = null ;
+		gApiObject[ PlacerX ][ PlacerIndex ].Order.IntervalId = null ;
+	}
+	else if( FormData.OrderPlaceType == 'Interval' )
+	{
+		gApiObject[ PlacerX ][ PlacerIndex ].Order.Interval = parseInt( parseFloat( FormData.Interval ) * 1000 ) ;
+		gApiObject[ PlacerX ][ PlacerIndex ].Order.IntervalId = setInterval
+		(
+			requestIntervalOrder.bind( { X : PlacerX , Index : PlacerIndex } ) , 
+			gApiObject[ PlacerX ][ PlacerIndex ].Order.Interval
+		) ;
+	}
+	
+	console.log( PlacerX + '_' + gApiObject[ PlacerX ][ PlacerIndex ].Name + " 계좌의 주문을 시도합니다." ) ;
+	switch( PlacerX )
+	{
+		case 'Upbit' : 
+			
+		break ;
+		case 'Bitstamp' : 
+			
+		break ;
+	}
+}
+function requestIntervalOrder(  )
+{
+	console.log( this.X + '_' + gApiObject[ this.X ][ this.Index ].Name + " 계좌의 자동 주문을 시도합니다." ) ;
+}
+function cancelOrder( PlacerX , PlacerIndex )
+{
+	if( gApiObject[ PlacerX ][ PlacerIndex ].Order == null )
+	{
+		console.log( "없는 주문입니다." ) ;
+		return ;
+	}
+	
+	if( gApiObject[ PlacerX ][ PlacerIndex ].Order.IntervalId != null )
+	{
+		clearInterval( gApiObject[ PlacerX ][ PlacerIndex ].Order.IntervalId ) ;
+		gApiObject[ PlacerX ][ PlacerIndex ].Order.IntervalId = null ;
+	}
+	gApiObject[ PlacerX ][ PlacerIndex ].Order = null ;
+	console.log( PlacerX + '_' + gApiObject[ PlacerX ][ PlacerIndex ].Name + " 계좌의 주문을 취소했습니다." ) ;
 }
