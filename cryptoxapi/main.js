@@ -12,7 +12,9 @@ const pkCrypto = require( 'crypto' ) ;
 
 // globals
 var gApp = pkExpress(  ) ;
-var gApiObject = null ;
+var gApiKeyObject = null ;
+var gApiTickerObject = null ;
+var gOrderForm = null ;
 
 // globals functions
 function g_checkKey( AccessKey , SecretKey )
@@ -33,6 +35,41 @@ function g_getTokenUpbit( AccessKey , SecretKey )
 	
 	return pkJwt.sign( Payload , SecretKey ) ;
 }
+function g_getTokenBitstamp( Index , Method , Path , Body )
+{
+	var Result = 
+	{
+		Header : null ,
+		Signature : null ,
+		Message : null 
+	} ;
+	
+	Result.Header = 
+	{
+		'X-Auth' : 'BITSTAMP ' + gApiKeyObject.Bitstamp[ Index ].AccessKey , 
+		'X-Auth-Signature' : null , 
+		'X-Auth-Nonce' : String( pkUuidv4(  ) ) , 
+		'X-Auth-Timestamp' : String( Date.now(  ) ) , 
+		'X-Auth-Version' : 'v2' 
+	} ;
+	if( Body != null )
+		Result.Header[ 'Content-Type' ] = 'application/x-www-form-urlencoded' ;
+	Result.Message = Result.Header[ 'X-Auth' ] + 
+					Method + 
+					'www.bitstamp.net' + 
+					'/api/' + Path + 
+					'' + 
+					( Body == null ? '' : Result.Header[ 'Content-Type' ] ) + 
+					Result.Header[ 'X-Auth-Nonce' ] + 
+					Result.Header[ 'X-Auth-Timestamp' ] + 
+					Result.Header[ 'X-Auth-Version' ] + 
+					( Body == null ? '' : Body ) ;
+	
+	Result.Signature = pkCrypto.createHmac( 'sha256' , gApiKeyObject.Bitstamp[ Index ].SecretKey ).update( Result.Message ).digest( 'hex' ) ;
+	Result.Header[ 'X-Auth-Signature' ] = Result.Signature ;
+	
+	return Result ;
+}
 
 // setting
 gApp.set( "view engine" , "ejs" ) ;
@@ -48,23 +85,39 @@ gApp.get
 	{
 		pkFs.readFile
 		(
-			'./Key.json' , 
+			'./key.json' , 
 			'utf8' , 
 			function( Err , Data )
 			{
 				if( Err )
-					gApiObject = null ;
+					gApiKeyObject = null ;
 				else
 				{
-					gApiObject = JSON.parse( Data ) ;
-					gApiObject.Message = new String(  ) ;
+					gApiKeyObject = JSON.parse( Data ) ;
+					gApiKeyObject.Message = new String(  ) ;
+				}
+			}
+		) ;
+		pkFs.readFile
+		(
+			'./ticker.json' , 
+			'utf8' , 
+			function( Err , Data )
+			{
+				if( Err )
+					gApiTickerObject = null ;
+				else
+				{
+					gApiTickerObject = JSON.parse( Data ) ;
 				}
 			}
 		) ;
 		
 		var Context = 
 		{
-			ApiObject : gApiObject
+			ApiKey : gApiKeyObject , 
+			ApiTicker : gApiTickerObject , 
+			OrderForm : gOrderForm 
 		} ;
 		Res.render( "index" , Context ) ;
 	}
@@ -75,7 +128,6 @@ gApp.listen
 	(  ) => 
 	{
 		console.log( "I'm listening." ) ;
-		setInterval( requestAccount , 1000 ) ;
 	}
 ) ;
 
@@ -85,7 +137,7 @@ gApp.get
 	'/api_placeOrder' , 
 	( Req , Res ) => 
 	{
-		if( gApiObject == null )
+		if( gApiKeyObject == null )
 			return ;
 		
 		var OrderPlacerX = Req.query.OrderPlacer.split( '_' )[ 0 ] ;
@@ -93,9 +145,18 @@ gApp.get
 		
 		requestOrder( Req.query , OrderPlacerX , OrderPlacerIndex ) ;
 		
+		gOrderForm = new Object(  ) ;
+		gOrderForm.Placement = Req.query.OrderPlacement ;
+		gOrderForm.Placer = Req.query.OrderPlacer ;
+		gOrderForm.Price = Req.query.Price ;
+		gOrderForm.Size = Req.query.Size ;
+		gOrderForm.Interval = Req.query.Interval ;
+		
 		var Context = 
 		{
-			ApiObject : gApiObject
+			ApiKey : gApiKeyObject , 
+			ApiTicker : gApiTickerObject , 
+			OrderForm : gOrderForm 
 		} ;
 		Res.render( "index" , Context ) ;
 	}
@@ -112,7 +173,9 @@ gApp.get
 		
 		var Context = 
 		{
-			ApiObject : gApiObject
+			ApiKey : gApiKeyObject , 
+			ApiTicker : gApiTickerObject , 
+			OrderForm : gOrderForm 
 		} ;
 		Res.render( "index" , Context ) ;
 	}
@@ -122,29 +185,31 @@ gApp.get
 	'/api_cancelAllOrders' , 
 	( Req , Res ) => 
 	{
-		if( gApiObject == null )
+		if( gApiKeyObject == null )
 			return ;
 		
-		for( var Key in gApiObject )
+		for( var Key in gApiKeyObject )
 		{
-			for( var Index in gApiObject[ Key ] )
+			for( var Index in gApiKeyObject[ Key ] )
 			{
-				if( gApiObject[ Key ][ Index ].Order != null )
+				if( gApiKeyObject[ Key ][ Index ].Order != null )
 				{
-					if( gApiObject[ Key ][ Index ].Order.IntervalId != null )
+					if( gApiKeyObject[ Key ][ Index ].Order.IntervalId != null )
 					{
-						clearInterval( gApiObject[ Key ][ Index ].Order.IntervalId ) ;
-						gApiObject[ Key ][ Index ].Order.IntervalId = null ;
+						clearInterval( gApiKeyObject[ Key ][ Index ].Order.IntervalId ) ;
+						gApiKeyObject[ Key ][ Index ].Order.IntervalId = null ;
 					}	
-					console.log( Key + '_' + gApiObject[ Key ][ Index ].Name + " 계좌의 주문을 취소하였습니다." ) ;
-					gApiObject[ Key ][ Index ].Order = null ;
+					console.log( Key + '_' + gApiKeyObject[ Key ][ Index ].Name + " 계좌의 주문을 취소하였습니다." ) ;
+					gApiKeyObject[ Key ][ Index ].Order = null ;
 				}
 			}
 		}
 		
 		var Context = 
 		{
-			ApiObject : gApiObject
+			ApiKey : gApiKeyObject , 
+			ApiTicker : gApiTickerObject , 
+			OrderForm : gOrderForm 
 		} ;
 		Res.render( "index" , Context ) ;
 	}
@@ -156,23 +221,25 @@ gApp.post
 	'/api_update' , 
 	( Req , Res ) => 
 	{
-		gApiObject.Message = "(티커 : 잔고 / 동결 / 평단)\n" ;
-		for( var Key in gApiObject )
+		requestAccount(  ) ;
+		
+		gApiKeyObject.Message = "(티커 : 잔고 / 동결 / 평단)\n" ;
+		for( var Key in gApiKeyObject )
 		{
-			for( var Index in gApiObject[ Key ] )
+			for( var Index in gApiKeyObject[ Key ] )
 			{
-				if( gApiObject[ Key ][ Index ].Name != null )
+				if( gApiKeyObject[ Key ][ Index ].Name != null )
 				{
-					gApiObject.Message = gApiObject.Message + '♠' + Key + '_' + gApiObject[ Key ][ Index ].Name + '♠' + '\n' ;
-					for( var InfoIndex in gApiObject[ Key ][ Index ].AccountInfo )
+					gApiKeyObject.Message = gApiKeyObject.Message + '♠' + Key + '_' + gApiKeyObject[ Key ][ Index ].Name + '♠' + '\n' ;
+					for( var InfoIndex in gApiKeyObject[ Key ][ Index ].AccountInfo )
 					{
-						if( gApiObject[ Key ][ Index ].AccountInfo != null )
+						if( gApiKeyObject[ Key ][ Index ].AccountInfo != null )
 						{
-							gApiObject.Message = gApiObject.Message + 
-							gApiObject[ Key ][ Index ].AccountInfo[ InfoIndex ].Ticker + ' : ' + 
-							gApiObject[ Key ][ Index ].AccountInfo[ InfoIndex ].Balance + ' / ' + 
-							gApiObject[ Key ][ Index ].AccountInfo[ InfoIndex ].Locked + ' / ' + 
-							gApiObject[ Key ][ Index ].AccountInfo[ InfoIndex ].AvgPrice + 
+							gApiKeyObject.Message = gApiKeyObject.Message + 
+							gApiKeyObject[ Key ][ Index ].AccountInfo[ InfoIndex ].Ticker + ' : ' + 
+							gApiKeyObject[ Key ][ Index ].AccountInfo[ InfoIndex ].Balance + ' / ' + 
+							gApiKeyObject[ Key ][ Index ].AccountInfo[ InfoIndex ].Locked + ' / ' + 
+							gApiKeyObject[ Key ][ Index ].AccountInfo[ InfoIndex ].AvgPrice + 
 							'\n' ;
 						}
 					}
@@ -182,7 +249,9 @@ gApp.post
 		
 		var Context = 
 		{
-			ApiObject : gApiObject 
+			ApiKey : gApiKeyObject , 
+			ApiTicker : gApiTickerObject , 
+			OrderForm : gOrderForm 
 		} ;
 		Res.render( "index" , Context ) ;
 	}
@@ -191,7 +260,7 @@ gApp.post
 // sub functions
 function requestAccount(  )
 {
-	if( gApiObject == null )
+	if( gApiKeyObject == null )
 		return ;
 	
 	var Options ;
@@ -200,9 +269,9 @@ function requestAccount(  )
 	console.log( "Updating the accounts." ) ;
 	
 	// Upbit
-	if( gApiObject.Upbit[ 0 ].Name != null )
+	if( gApiKeyObject.Upbit[ 0 ].Name != null )
 	{
-		Token = g_getTokenUpbit( gApiObject.Upbit[ 0 ].AccessKey , gApiObject.Upbit[ 0 ].SecretKey ) ;
+		Token = g_getTokenUpbit( gApiKeyObject.Upbit[ 0 ].AccessKey , gApiKeyObject.Upbit[ 0 ].SecretKey ) ;
 		Options = 
 		{
 			method : "GET" , 
@@ -219,21 +288,21 @@ function requestAccount(  )
 				
 				var AccountObject = JSON.parse( Body ) ;
 				
-				gApiObject.Upbit[ 0 ].AccountInfo = new Array(  ) ;
+				gApiKeyObject.Upbit[ 0 ].AccountInfo = new Array(  ) ;
 				for( var AccountIndex in AccountObject )
 				{
-					gApiObject.Upbit[ 0 ].AccountInfo[ AccountIndex ] = new Object(  ) ;
-					gApiObject.Upbit[ 0 ].AccountInfo[ AccountIndex ].Ticker = AccountObject[ AccountIndex ].currency ;
-					gApiObject.Upbit[ 0 ].AccountInfo[ AccountIndex ].Balance = AccountObject[ AccountIndex ].balance ;
-					gApiObject.Upbit[ 0 ].AccountInfo[ AccountIndex ].Locked = AccountObject[ AccountIndex ].locked ;
-					gApiObject.Upbit[ 0 ].AccountInfo[ AccountIndex ].AvgPrice = AccountObject[ AccountIndex ].avg_buy_price ;
+					gApiKeyObject.Upbit[ 0 ].AccountInfo[ AccountIndex ] = new Object(  ) ;
+					gApiKeyObject.Upbit[ 0 ].AccountInfo[ AccountIndex ].Ticker = AccountObject[ AccountIndex ].currency ;
+					gApiKeyObject.Upbit[ 0 ].AccountInfo[ AccountIndex ].Balance = AccountObject[ AccountIndex ].balance ;
+					gApiKeyObject.Upbit[ 0 ].AccountInfo[ AccountIndex ].Locked = AccountObject[ AccountIndex ].locked ;
+					gApiKeyObject.Upbit[ 0 ].AccountInfo[ AccountIndex ].AvgPrice = AccountObject[ AccountIndex ].avg_buy_price ;
 				}
 			}
 		) ;
 	}
-	if( gApiObject.Upbit[ 1 ].Name != null )
+	if( gApiKeyObject.Upbit[ 1 ].Name != null )
 	{
-		Token = g_getTokenUpbit( gApiObject.Upbit[ 1 ].AccessKey , gApiObject.Upbit[ 1 ].SecretKey ) ;
+		Token = g_getTokenUpbit( gApiKeyObject.Upbit[ 1 ].AccessKey , gApiKeyObject.Upbit[ 1 ].SecretKey ) ;
 		Options = 
 		{
 			method : "GET" , 
@@ -250,21 +319,21 @@ function requestAccount(  )
 				
 				var AccountObject = JSON.parse( Body ) ;
 				
-				gApiObject.Upbit[ 1 ].AccountInfo = new Array(  ) ;
+				gApiKeyObject.Upbit[ 1 ].AccountInfo = new Array(  ) ;
 				for( var AccountIndex in AccountObject )
 				{
-					gApiObject.Upbit[ 1 ].AccountInfo[ AccountIndex ] = new Object(  ) ;
-					gApiObject.Upbit[ 1 ].AccountInfo[ AccountIndex ].Ticker = AccountObject[ AccountIndex ].currency ;
-					gApiObject.Upbit[ 1 ].AccountInfo[ AccountIndex ].Balance = AccountObject[ AccountIndex ].balance ;
-					gApiObject.Upbit[ 1 ].AccountInfo[ AccountIndex ].Locked = AccountObject[ AccountIndex ].locked ;
-					gApiObject.Upbit[ 1 ].AccountInfo[ AccountIndex ].AvgPrice = AccountObject[ AccountIndex ].avg_buy_price ;
+					gApiKeyObject.Upbit[ 1 ].AccountInfo[ AccountIndex ] = new Object(  ) ;
+					gApiKeyObject.Upbit[ 1 ].AccountInfo[ AccountIndex ].Ticker = AccountObject[ AccountIndex ].currency ;
+					gApiKeyObject.Upbit[ 1 ].AccountInfo[ AccountIndex ].Balance = AccountObject[ AccountIndex ].balance ;
+					gApiKeyObject.Upbit[ 1 ].AccountInfo[ AccountIndex ].Locked = AccountObject[ AccountIndex ].locked ;
+					gApiKeyObject.Upbit[ 1 ].AccountInfo[ AccountIndex ].AvgPrice = AccountObject[ AccountIndex ].avg_buy_price ;
 				}
 			}
 		) ;
 	}
-	if( gApiObject.Upbit[ 2 ].Name != null )
+	if( gApiKeyObject.Upbit[ 2 ].Name != null )
 	{
-		Token = g_getTokenUpbit( gApiObject.Upbit[ 2 ].AccessKey , gApiObject.Upbit[ 2 ].SecretKey ) ;
+		Token = g_getTokenUpbit( gApiKeyObject.Upbit[ 2 ].AccessKey , gApiKeyObject.Upbit[ 2 ].SecretKey ) ;
 		Options = 
 		{
 			method : "GET" , 
@@ -281,46 +350,30 @@ function requestAccount(  )
 				
 				var AccountObject = JSON.parse( Body ) ;
 				
-				gApiObject.Upbit[ 2 ].AccountInfo = new Array(  ) ;
+				gApiKeyObject.Upbit[ 2 ].AccountInfo = new Array(  ) ;
 				for( var AccountIndex in AccountObject )
 				{
-					gApiObject.Upbit[ 2 ].AccountInfo[ AccountIndex ] = new Object(  ) ;
-					gApiObject.Upbit[ 2 ].AccountInfo[ AccountIndex ].Ticker = AccountObject[ AccountIndex ].currency ;
-					gApiObject.Upbit[ 2 ].AccountInfo[ AccountIndex ].Balance = AccountObject[ AccountIndex ].balance ;
-					gApiObject.Upbit[ 2 ].AccountInfo[ AccountIndex ].Locked = AccountObject[ AccountIndex ].locked ;
-					gApiObject.Upbit[ 2 ].AccountInfo[ AccountIndex ].AvgPrice = AccountObject[ AccountIndex ].avg_buy_price ;
+					gApiKeyObject.Upbit[ 2 ].AccountInfo[ AccountIndex ] = new Object(  ) ;
+					gApiKeyObject.Upbit[ 2 ].AccountInfo[ AccountIndex ].Ticker = AccountObject[ AccountIndex ].currency ;
+					gApiKeyObject.Upbit[ 2 ].AccountInfo[ AccountIndex ].Balance = AccountObject[ AccountIndex ].balance ;
+					gApiKeyObject.Upbit[ 2 ].AccountInfo[ AccountIndex ].Locked = AccountObject[ AccountIndex ].locked ;
+					gApiKeyObject.Upbit[ 2 ].AccountInfo[ AccountIndex ].AvgPrice = AccountObject[ AccountIndex ].avg_buy_price ;
 				}
 			}
 		) ;
 	}
 	
 	// Bitstamp
-	if( gApiObject.Bitstamp[ 0 ].Name != null )
+	var Result ;
+	if( gApiKeyObject.Bitstamp[ 0 ].Name != null )
 	{
-		var Headers = 
-		{
-			'X-Auth' : 'BITSTAMP ' + gApiObject.Bitstamp[ 0 ].AccessKey , 
-			'X-Auth-Signature' : null , 
-			'X-Auth-Nonce' : String( pkUuidv4(  ) ) , 
-			'X-Auth-Timestamp' : String( Date.now(  ) ) , 
-			'X-Auth-Version' : 'v2' 
-		} ;
-		var Message = Headers[ 'X-Auth' ] + 
-			'POST' + 
-			'www.bitstamp.net' + 
-			'/api/v2/balance/' + 
-			'' + 
-			Headers[ 'X-Auth-Nonce' ] + 
-			Headers[ 'X-Auth-Timestamp' ] + 
-			Headers[ 'X-Auth-Version' ] ;
-		var Signature = pkCrypto.createHmac( 'sha256' , gApiObject.Bitstamp[ 0 ].SecretKey ).update( Message ).digest( 'hex' ) ;
+		Result = g_getTokenBitstamp( 0 , 'POST' , 'v2/balance/' , null ) ;
 		
-		Headers[ 'X-Auth-Signature' ] = Signature ;
 		Options = 
 		{
 			method : "POST" , 
 			url : "https://www.bitstamp.net/api/v2/balance/" , 
-			headers : Headers 
+			headers : Result.Header
 		} ;
 		
 		pkRequest
@@ -333,7 +386,7 @@ function requestAccount(  )
 				var BalanceInfo = JSON.parse( Body ) ;
 				var AssetCount = 0 ;
 				
-				gApiObject.Bitstamp[ 0 ].AccountInfo = new Array(  ) ;
+				gApiKeyObject.Bitstamp[ 0 ].AccountInfo = new Array(  ) ;
 				for( var Key in BalanceInfo )
 				{
 					var Ticker = Key.split( '_' )[ 0 ] ;
@@ -341,10 +394,10 @@ function requestAccount(  )
 					
 					if( Tag == 'balance' && BalanceInfo[ Key ] > 0.0 )
 					{
-						gApiObject.Bitstamp[ 0 ].AccountInfo[ AssetCount ] = new Object(  ) ;
-						gApiObject.Bitstamp[ 0 ].AccountInfo[ AssetCount ].Ticker = Ticker ;
-						gApiObject.Bitstamp[ 0 ].AccountInfo[ AssetCount ].Balance = BalanceInfo[ Key ] ;
-						gApiObject.Bitstamp[ 0 ].AccountInfo[ AssetCount ].Locked = BalanceInfo[ Key ] - BalanceInfo[ Ticker + '_available' ] ;
+						gApiKeyObject.Bitstamp[ 0 ].AccountInfo[ AssetCount ] = new Object(  ) ;
+						gApiKeyObject.Bitstamp[ 0 ].AccountInfo[ AssetCount ].Ticker = Ticker ;
+						gApiKeyObject.Bitstamp[ 0 ].AccountInfo[ AssetCount ].Balance = BalanceInfo[ Key ] ;
+						gApiKeyObject.Bitstamp[ 0 ].AccountInfo[ AssetCount ].Locked = BalanceInfo[ Key ] - BalanceInfo[ Ticker + '_available' ] ;
 						
 						AssetCount ++ ;
 					}
@@ -352,32 +405,14 @@ function requestAccount(  )
 			}
 		) ;
 	}
-	if( gApiObject.Bitstamp[ 1 ].Name != null )
+	if( gApiKeyObject.Bitstamp[ 1 ].Name != null )
 	{
-		var Headers = 
-		{
-			'X-Auth' : 'BITSTAMP ' + gApiObject.Bitstamp[ 1 ].AccessKey , 
-			'X-Auth-Signature' : null , 
-			'X-Auth-Nonce' : String( pkUuidv4(  ) ) , 
-			'X-Auth-Timestamp' : String( Date.now(  ) ) , 
-			'X-Auth-Version' : 'v2' 
-		} ;
-		var Message = Headers[ 'X-Auth' ] + 
-			'POST' + 
-			'www.bitstamp.net' + 
-			'/api/v2/balance/' + 
-			'' + 
-			Headers[ 'X-Auth-Nonce' ] + 
-			Headers[ 'X-Auth-Timestamp' ] + 
-			Headers[ 'X-Auth-Version' ] ;
-		var Signature = pkCrypto.createHmac( 'sha256' , gApiObject.Bitstamp[ 1 ].SecretKey ).update( Message ).digest( 'hex' ) ;
-		
-		Headers[ 'X-Auth-Signature' ] = Signature ;
+		Result = g_getTokenBitstamp( 1 , 'POST' , 'v2/balance/' , null ) ;
 		Options = 
 		{
 			method : "POST" , 
 			url : "https://www.bitstamp.net/api/v2/balance/" , 
-			headers : Headers 
+			headers : Result.Header
 		} ;
 		
 		pkRequest
@@ -390,7 +425,7 @@ function requestAccount(  )
 				var BalanceInfo = JSON.parse( Body ) ;
 				var AssetCount = 0 ;
 				
-				gApiObject.Bitstamp[ 1 ].AccountInfo = new Array(  ) ;
+				gApiKeyObject.Bitstamp[ 1 ].AccountInfo = new Array(  ) ;
 				for( var Key in BalanceInfo )
 				{
 					var Ticker = Key.split( '_' )[ 0 ] ;
@@ -398,10 +433,10 @@ function requestAccount(  )
 					
 					if( Tag == 'balance' && BalanceInfo[ Key ] > 0.0 )
 					{
-						gApiObject.Bitstamp[ 1 ].AccountInfo[ AssetCount ] = new Object(  ) ;
-						gApiObject.Bitstamp[ 1 ].AccountInfo[ AssetCount ].Ticker = Ticker ;
-						gApiObject.Bitstamp[ 1 ].AccountInfo[ AssetCount ].Balance = BalanceInfo[ Key ] ;
-						gApiObject.Bitstamp[ 1 ].AccountInfo[ AssetCount ].Locked = BalanceInfo[ Key ] - BalanceInfo[ Ticker + '_available' ] ;
+						gApiKeyObject.Bitstamp[ 1 ].AccountInfo[ AssetCount ] = new Object(  ) ;
+						gApiKeyObject.Bitstamp[ 1 ].AccountInfo[ AssetCount ].Ticker = Ticker ;
+						gApiKeyObject.Bitstamp[ 1 ].AccountInfo[ AssetCount ].Balance = BalanceInfo[ Key ] ;
+						gApiKeyObject.Bitstamp[ 1 ].AccountInfo[ AssetCount ].Locked = BalanceInfo[ Key ] - BalanceInfo[ Ticker + '_available' ] ;
 						
 						AssetCount ++ ;
 					}
@@ -409,32 +444,14 @@ function requestAccount(  )
 			}
 		) ;
 	}
-	if( gApiObject.Bitstamp[ 2 ].Name != null )
+	if( gApiKeyObject.Bitstamp[ 2 ].Name != null )
 	{
-		var Headers = 
-		{
-			'X-Auth' : 'BITSTAMP ' + gApiObject.Bitstamp[ 2 ].AccessKey , 
-			'X-Auth-Signature' : null , 
-			'X-Auth-Nonce' : String( pkUuidv4(  ) ) , 
-			'X-Auth-Timestamp' : String( Date.now(  ) ) , 
-			'X-Auth-Version' : 'v2' 
-		} ;
-		var Message = Headers[ 'X-Auth' ] + 
-			'POST' + 
-			'www.bitstamp.net' + 
-			'/api/v2/balance/' + 
-			'' + 
-			Headers[ 'X-Auth-Nonce' ] + 
-			Headers[ 'X-Auth-Timestamp' ] + 
-			Headers[ 'X-Auth-Version' ] ;
-		var Signature = pkCrypto.createHmac( 'sha256' , gApiObject.Bitstamp[ 2 ].SecretKey ).update( Message ).digest( 'hex' ) ;
-		
-		Headers[ 'X-Auth-Signature' ] = Signature ;
+		Result = g_getTokenBitstamp( 2 , 'POST' , 'v2/balance/' , null ) ;
 		Options = 
 		{
 			method : "POST" , 
 			url : "https://www.bitstamp.net/api/v2/balance/" , 
-			headers : Headers 
+			headers : Result.Header
 		} ;
 		
 		pkRequest
@@ -447,7 +464,7 @@ function requestAccount(  )
 				var BalanceInfo = JSON.parse( Body ) ;
 				var AssetCount = 0 ;
 				
-				gApiObject.Bitstamp[ 2 ].AccountInfo = new Array(  ) ;
+				gApiKeyObject.Bitstamp[ 2 ].AccountInfo = new Array(  ) ;
 				for( var Key in BalanceInfo )
 				{
 					var Ticker = Key.split( '_' )[ 0 ] ;
@@ -455,10 +472,10 @@ function requestAccount(  )
 					
 					if( Tag == 'balance' && BalanceInfo[ Key ] > 0.0 )
 					{
-						gApiObject.Bitstamp[ 2 ].AccountInfo[ AssetCount ] = new Object(  ) ;
-						gApiObject.Bitstamp[ 2 ].AccountInfo[ AssetCount ].Ticker = Ticker ;
-						gApiObject.Bitstamp[ 2 ].AccountInfo[ AssetCount ].Balance = BalanceInfo[ Key ] ;
-						gApiObject.Bitstamp[ 2 ].AccountInfo[ AssetCount ].Locked = BalanceInfo[ Key ] - BalanceInfo[ Ticker + '_available' ] ;
+						gApiKeyObject.Bitstamp[ 2 ].AccountInfo[ AssetCount ] = new Object(  ) ;
+						gApiKeyObject.Bitstamp[ 2 ].AccountInfo[ AssetCount ].Ticker = Ticker ;
+						gApiKeyObject.Bitstamp[ 2 ].AccountInfo[ AssetCount ].Balance = BalanceInfo[ Key ] ;
+						gApiKeyObject.Bitstamp[ 2 ].AccountInfo[ AssetCount ].Locked = BalanceInfo[ Key ] - BalanceInfo[ Ticker + '_available' ] ;
 						
 						AssetCount ++ ;
 					}
@@ -469,39 +486,40 @@ function requestAccount(  )
 }
 function requestOrder( FormData , PlacerX , PlacerIndex )
 {
-	if( gApiObject == null )
+	if( gApiKeyObject == null )
 		return ;
-	else if( gApiObject[ PlacerX ][ PlacerIndex ].Order != null )
+	else if( gApiKeyObject[ PlacerX ][ PlacerIndex ].Order != null )
 	{
 		console.log( "실행 중인 주문입니다." ) ;
 		return ;
 	}
 	
-	gApiObject[ PlacerX ][ PlacerIndex ].Order = new Object(  ) ;
-	gApiObject[ PlacerX ][ PlacerIndex ].Order.Placement = FormData.OrderPlacement ;
+	gApiKeyObject[ PlacerX ][ PlacerIndex ].Order = new Object(  ) ;
+	gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.Ticker = FormData.Ticker ;
+	gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.Placement = FormData.OrderPlacement ;
 	
 	switch( FormData.OrderPlacement )
 	{
 		case "LimitBuy" : 
 		case "LimitSell" : 
-			gApiObject[ PlacerX ][ PlacerIndex ].Order.Price = FormData.Price ;
-			gApiObject[ PlacerX ][ PlacerIndex ].Order.Interval = null ;
-			gApiObject[ PlacerX ][ PlacerIndex ].Order.IntervalId = null ;
+			gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.Price = FormData.Price ;
+			gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.Interval = null ;
+			gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.IntervalId = null ;
 		break ;
 		case "AutoMarketBuy" : 
 		case "AutoMarketSell" : 
-			gApiObject[ PlacerX ][ PlacerIndex ].Order.Price = null ;
-			gApiObject[ PlacerX ][ PlacerIndex ].Order.Interval = parseInt( parseFloat( FormData.Interval ) * 1000 ) ;
-			gApiObject[ PlacerX ][ PlacerIndex ].Order.IntervalId = setInterval
+			gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.Price = null ;
+			gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.Interval = parseInt( parseFloat( FormData.Interval ) * 1000 ) ;
+			gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.IntervalId = setInterval
 			(
 				requestIntervalOrder.bind( { X : PlacerX , Index : PlacerIndex } ) , 
-				gApiObject[ PlacerX ][ PlacerIndex ].Order.Interval
+				gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.Interval
 			) ;
 		break ;
 	}
-	gApiObject[ PlacerX ][ PlacerIndex ].Order.Size = FormData.Size ;
+	gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.Size = FormData.Size ;
 	
-	console.log( PlacerX + '_' + gApiObject[ PlacerX ][ PlacerIndex ].Name + " 계좌의 주문을 시도합니다." ) ;
+	console.log( PlacerX + '_' + gApiKeyObject[ PlacerX ][ PlacerIndex ].Name + " 계좌의 주문을 시도합니다." ) ;
 	switch( PlacerX )
 	{
 		case 'Upbit' : 
@@ -514,26 +532,53 @@ function requestOrder( FormData , PlacerX , PlacerIndex )
 }
 function requestIntervalOrder(  )
 {
-	if( gApiObject == null )
+	if( gApiKeyObject == null )
 		return ;
 	
-	console.log( this.X + '_' + gApiObject[ this.X ][ this.Index ].Name + " 계좌의 자동 주문을 시도합니다." ) ;
+	console.log( this.X + '_' + gApiKeyObject[ this.X ][ this.Index ].Name + " 계좌의 자동 주문을 시도합니다." ) ;
 }
 function cancelOrder( PlacerX , PlacerIndex )
 {
-	if( gApiObject == null )
+	if( gApiKeyObject == null )
 		return ;
-	else if( gApiObject[ PlacerX ][ PlacerIndex ].Order == null )
+	else if( gApiKeyObject[ PlacerX ][ PlacerIndex ].Order == null )
 	{
 		console.log( "없는 주문입니다." ) ;
 		return ;
 	}
 	
-	if( gApiObject[ PlacerX ][ PlacerIndex ].Order.IntervalId != null )
+	switch( PlacerX )
 	{
-		clearInterval( gApiObject[ PlacerX ][ PlacerIndex ].Order.IntervalId ) ;
-		gApiObject[ PlacerX ][ PlacerIndex ].Order.IntervalId = null ;
+		case 'Upbit' : 
+			
+		break ;
+		case 'Bitstamp' : 
+			var Result = g_getTokenBitstamp( PlacerIndex , 'POST' , 'v2/open_orders/all/' , null ) ;
+			Options = 
+			{
+				method : "POST" , 
+				url : "https://www.bitstamp.net/api/v2/open_orders/all/" , 
+				headers : Result.Header
+			} ;
+			
+			pkRequest
+			(
+				Options , ( Err , Res , Body ) => 
+				{
+					if( Err )
+						throw new Error( Err ) ;
+					
+					console.log(Body);
+				}
+			) ;
+		break ;
 	}
-	gApiObject[ PlacerX ][ PlacerIndex ].Order = null ;
-	console.log( PlacerX + '_' + gApiObject[ PlacerX ][ PlacerIndex ].Name + " 계좌의 주문을 취소했습니다." ) ;
+	
+	if( gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.IntervalId != null )
+	{
+		clearInterval( gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.IntervalId ) ;
+		gApiKeyObject[ PlacerX ][ PlacerIndex ].Order.IntervalId = null ;
+	}
+	gApiKeyObject[ PlacerX ][ PlacerIndex ].Order = null ;
+	console.log( PlacerX + '_' + gApiKeyObject[ PlacerX ][ PlacerIndex ].Name + " 계좌의 주문을 취소했습니다." ) ;
 }
