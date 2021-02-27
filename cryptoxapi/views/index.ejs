@@ -6,32 +6,69 @@
 	<body>
 		<!-- 주문 -->
 		<form action='/api_placeOrder' methode='get'>
+			<% var selectPlacement , selectPlacer , inputPrice , inputSize , inputInterval ; %>
+			<% if( OrderForm != null ) { %>
+				<% selectPlacement = OrderForm.Placement %>
+				<% selectPlacer = OrderForm.Placer %>
+				<% inputPrice = OrderForm.Price ; %>
+				<% inputSize = OrderForm.Size ; %>
+				<% inputInterval = OrderForm.Interval ; %>
+			<% } %>
 			<p>
-				<input type="text" name="Price" placeholder="가격">
-				<input type="text" name="Size" placeholder="수량">
-				<input type="text" name="Interval" placeholder="시간 간격(1초 단위)">
-			</p>
-			<p>
-				<select name='OrderPlacement'>
-					<option value="LimitBuy">지정가 매수</option>
-					<option value="LimitSell">지정가 매도</option>
-					<option value="AutoMarketBuy">시장가 자동 매수</option>
-					<option value="AutoMarketSell">시장가 자동 매도</option>
-				</select>
-				<select name='OrderPlacer'>
-					<% if( ApiObject != null ) { %>
-						<% for( var Index in ApiObject.Upbit ) { %>
-							<% if( ApiObject.Upbit[ Index ].Name != null ) { %>
-								<option value=<%= 'Upbit_' + String( Index ) + '_' + String( Index ) %>><%= 'Upbit_' + ApiObject.Upbit[ Index ].Name %></option>
-							<% } %>
-						<% } %>
-						<% for( var Index in ApiObject.Bitstamp ) { %>
-							<% if( ApiObject.Bitstamp[ Index ].Name != null ) { %>
-								<option value=<%= 'Bitstamp_' + String( Index ) + '_' + String( Index ) %>><%= 'Bitstamp_' + ApiObject.Bitstamp[ Index ].Name %></option>
+				<select name='Ticker'>
+					<% if( ApiTicker != null ) { %>
+						<% for( var Key in ApiTicker ) { %>
+							<% for( var Index in ApiTicker[ Key ] ) { %>
+								<option value=<%= ApiTicker[ Key ][ Index ] %>><%= ApiTicker[ Key ][ Index ] %></option>
 							<% } %>
 						<% } %>
 					<% } %>
 				</select>
+				<select name='OrderPlacement'>
+					<% if( selectPlacement == "LimitBuy" ) { %>
+						<option value="LimitBuy" selected>지정가 매수</option>
+					<% } else { %>
+						<option value="LimitBuy">지정가 매수</option>
+					<% } %>
+					
+					<% if( selectPlacement == "LimitSell" ) { %>
+						<option value="LimitSell" selected>지정가 매도</option>
+					<% } else { %>
+						<option value="LimitSell">지정가 매도</option>
+					<% } %>
+					
+					<% if( selectPlacement == "AutoMarketBuy" ) { %>
+						<option value="AutoMarketBuy" selected>시장가 자동 매수</option>
+					<% } else { %>
+						<option value="AutoMarketBuy">시장가 자동 매수</option>
+					<% } %>
+					
+					<% if( selectPlacement == "AutoMarketSell" ) { %>
+						<option value="AutoMarketSell" selected>시장가 자동 매도</option>
+					<% } else { %>
+						<option value="AutoMarketSell">시장가 자동 매도</option>
+					<% } %>
+				</select>
+				<select name='OrderPlacer'>
+					<% if( ApiKey != null ) { %>
+						<% for( var Key in ApiKey ) { %>
+							<% for( var Index in ApiKey[ Key ] ) { %>
+								<% if( ApiKey[ Key ][ Index ].Name != null ) { %>
+									<% if( selectPlacer == ( Key + '_' + String( Index ) ) ) { %>
+										<option value=<%= Key + '_' + String( Index ) %> selected><%= Key + '_' + ApiKey[ Key ][ Index ].Name %></option>
+									<% } else { %>
+										<option value=<%= Key + '_' + String( Index ) %>><%= Key + '_' + ApiKey[ Key ][ Index ].Name %></option>
+									<% } %>
+								<% } %>
+							<% } %>
+						<% } %>
+					<% } %>
+				</select>
+			</p>
+			<p>
+				<input type="text" name="Price" placeholder="가격" value=<%= inputPrice %>>
+				<input type="text" name="Size" placeholder="수량" value=<%= inputSize %>>
+				<input type="text" name="Interval" placeholder="시간 간격(1초 단위)" value=<%= inputInterval %>>
 				다시 한번 확인해주세요.
 				<input type="submit" value="주문 실행">
 			</p>
@@ -47,23 +84,25 @@
 		<table>
 			<tr>
 				<th>계좌</th>
+				<th>#티커</th>
 				<th>#매매</th>
 				<th>#가격</th>
 				<th>#수량</th>
 				<th>#시간 간격</th>
 				<td></td>
 			</tr>
-			<% if( ApiObject != null ) { %>
-				<% for( var Key in ApiObject ) { %>
-					<% for( var Index in ApiObject[ Key ] ) { %>
-						<% if( ApiObject[ Key ][ Index ].Name != null ) { %>
-							<% if( ApiObject[ Key ][ Index ].Order != null ) { %>
+			<% if( ApiKey != null ) { %>
+				<% for( var Key in ApiKey ) { %>
+					<% for( var Index in ApiKey[ Key ] ) { %>
+						<% if( ApiKey[ Key ][ Index ].Name != null ) { %>
+							<% if( ApiKey[ Key ][ Index ].Order != null ) { %>
 								<tr>
-									<td><%= Key + '_' + ApiObject[ Key ][ Index ].Name %></td>
-									<td><%= ApiObject[ Key ][ Index ].Order.Placement %></td>
-									<td><%= ApiObject[ Key ][ Index ].Order.Price %></td>
-									<td><%= ApiObject[ Key ][ Index ].Order.Size %></td>
-									<td><%= ApiObject[ Key ][ Index ].Order.Interval %></td>
+									<td><%= Key + '_' + ApiKey[ Key ][ Index ].Name %></td>
+									<td><%= ApiKey[ Key ][ Index ].Order.Ticker %></td>
+									<td><%= ApiKey[ Key ][ Index ].Order.Placement %></td>
+									<td><%= ApiKey[ Key ][ Index ].Order.Price %></td>
+									<td><%= ApiKey[ Key ][ Index ].Order.Size %></td>
+									<td><%= ApiKey[ Key ][ Index ].Order.Interval %></td>
 									<td>
 										<form action='/api_cancelOrder' +  methode='get'>
 											<input type="hidden" name="CancelPlacer" value=<%= Key + '_' + String( Index ) %>> 
@@ -81,8 +120,8 @@
 		<!-- 계좌 조회 -->
 		<form action='/api_update' method='post'>
 			<p><input type='submit' value='업데이트'></p>
-			<% if( ApiObject != null ) { %>
-				<%- ApiObject.Message.replace(/\n/g, '<br>') %>
+			<% if( ApiKey != null ) { %>
+				<%- ApiKey.Message.replace(/\n/g, '<br>') %>
 			<% } %>
 		</form>
 	</body>
