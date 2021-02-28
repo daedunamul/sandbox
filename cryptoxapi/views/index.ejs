@@ -6,8 +6,9 @@
 	<body>
 		<!-- 주문 -->
 		<form action='/api_placeOrder' methode='get'>
-			<% var selectPlacement , selectPlacer , inputPrice , inputSize , inputInterval ; %>
+			<% var selectTicker , selectPlacement , selectPlacer , inputPrice , inputSize , inputInterval ; %>
 			<% if( OrderForm != null ) { %>
+				<% selectTicker = OrderForm.Ticker %>
 				<% selectPlacement = OrderForm.Placement %>
 				<% selectPlacer = OrderForm.Placer %>
 				<% inputPrice = OrderForm.Price ; %>
@@ -19,7 +20,11 @@
 					<% if( ApiTicker != null ) { %>
 						<% for( var Key in ApiTicker ) { %>
 							<% for( var Index in ApiTicker[ Key ] ) { %>
-								<option value=<%= ApiTicker[ Key ][ Index ] %>><%= ApiTicker[ Key ][ Index ] %></option>
+								<% if( selectTicker == ApiTicker[ Key ][ Index ] ) { %>
+									<option value=<%= ApiTicker[ Key ][ Index ] %> selected><%= ApiTicker[ Key ][ Index ] %></option>
+								<% } else { %>
+									<option value=<%= ApiTicker[ Key ][ Index ] %>><%= ApiTicker[ Key ][ Index ] %></option>
+								<% } %>
 							<% } %>
 						<% } %>
 					<% } %>
@@ -80,39 +85,65 @@
 			<input type="submit" value="모든 주문 취소">
 		</form>
 		
-		<!-- 주문 조회 -->
+		<!-- 지정가 주문 조회 -->
 		<table>
 			<tr>
 				<th>계좌</th>
+				<th>#주문번호</th>
 				<th>#티커</th>
 				<th>#매매</th>
 				<th>#가격</th>
 				<th>#수량</th>
-				<th>#시간 간격</th>
 				<td></td>
 			</tr>
-			<% if( ApiKey != null ) { %>
-				<% for( var Key in ApiKey ) { %>
-					<% for( var Index in ApiKey[ Key ] ) { %>
-						<% if( ApiKey[ Key ][ Index ].Name != null ) { %>
-							<% if( ApiKey[ Key ][ Index ].Order != null ) { %>
-								<tr>
-									<td><%= Key + '_' + ApiKey[ Key ][ Index ].Name %></td>
-									<td><%= ApiKey[ Key ][ Index ].Order.Ticker %></td>
-									<td><%= ApiKey[ Key ][ Index ].Order.Placement %></td>
-									<td><%= ApiKey[ Key ][ Index ].Order.Price %></td>
-									<td><%= ApiKey[ Key ][ Index ].Order.Size %></td>
-									<td><%= ApiKey[ Key ][ Index ].Order.Interval %></td>
-									<td>
-										<form action='/api_cancelOrder' +  methode='get'>
-											<input type="hidden" name="CancelPlacer" value=<%= Key + '_' + String( Index ) %>> 
-											<input type="submit" value="취소">
-										</form>
-									</td>
-								</tr>
-							<% } %>
-						<% } %>
-					<% } %>
+			<% for( var Key in ApiOrder ) { %>
+				<% for( var Index in ApiOrder[ Key ] ) { %>
+					<tr>
+						<td><%= Key %></td>
+						<td><%= ApiOrder[ Key ][ Index ][ 'Id' ] %></td>
+						<td><%= ApiOrder[ Key ][ Index ][ 'Ticker' ] %></td>
+						<td><%= ApiOrder[ Key ][ Index ][ 'Type' ] %></td>
+						<td><%= ApiOrder[ Key ][ Index ][ 'Price' ] %></td>
+						<td><%= ApiOrder[ Key ][ Index ][ 'Size' ] %></td>
+						<td>
+							<form action='/api_cancelOrder' +  methode='get'>
+								<input type="hidden" name="OrderCancelPlacer" value=<%= Key %>>
+								<input type="hidden" name="OrderId" value=<%= ApiOrder[ Key ][ Index ][ 'Id' ] %>>
+								<input type="submit" value="취소">
+							</form>
+						</td>
+					</tr>
+				<% } %>
+			<% } %>
+		</table>
+		
+		<!-- 자동 시장가 주문 조회 -->
+		<table>
+			<tr>
+				<th>계좌</th>
+				<th>#티커</th>
+				<th>#유형</th>
+				<th>#수량</th>
+				<th>#시간 간격</th>
+				<th>#함수 Id</th>
+				<td></td>
+			</tr>
+			<% for( var Key in ApiAutoOrder ) { %>
+				<% if( ApiAutoOrder[ Key ] != null && ApiAutoOrder[ Key ] != undefined ) { %>
+					<tr>
+						<td><%= Key %></td>
+						<td><%= ApiAutoOrder[ Key ][ 'Ticker' ] %></td>
+						<td><%= ApiAutoOrder[ Key ][ 'Type' ] %></td>
+						<td><%= ApiAutoOrder[ Key ][ 'Size' ] %></td>
+						<td><%= ApiAutoOrder[ Key ][ 'Interval' ] %></td>
+						<td><%= ApiAutoOrder[ Key ][ 'IntervalId' ] %></td>
+						<td>
+							<form action='/api_cancelOrder' +  methode='get'>
+								<input type="hidden" name="OrderCancelPlacer" value=<%= Key %>>
+								<input type="submit" value="취소">
+							</form>
+						</td>
+					</tr>
 				<% } %>
 			<% } %>
 		</table>
