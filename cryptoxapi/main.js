@@ -3,20 +3,23 @@ const pkExpress = require( 'express' ) ;
 const pkBodyParser = require( 'body-parser' ) ;
 const pkEjs = require( 'ejs' ) ;
 
-const pkFs = require( 'fs' ) ;
 const pkRequest = require( 'request' ) ;
 const pkJwt = require( 'jsonwebtoken' ) ;
 const { v4 : pkUuidv4 } = require( 'uuid' ) ;
 const pkQueryString = require( 'querystring' ) ;
+const pkQueryStringEncode = require( 'querystring' ).encode ;
 const pkCrypto = require( 'crypto' ) ;
+
+const pkMySQL = require( 'mysql' ) ;
 
 // globals
 var gApp = pkExpress(  ) ;
 var gApiKeyObject = null ;
-var gApiTickerObject = null ;
+var gApiTickerArray = null ;
 var gOrderForm = null ;
 var gApiOrderObject = new Object(  ) ;
 var gApiAutoOrderObject = new Object(  ) ;
+var gMessage = '' ;
 
 // globals functions
 function g_checkKey( AccessKey , SecretKey )
@@ -27,15 +30,29 @@ function g_checkKey( AccessKey , SecretKey )
 		return false ;
 	return true ;
 }
-function g_getTokenUpbit( AccessKey , SecretKey )
-{
+function g_getTokenUpbit( AccessKey , SecretKey , Method , Path , Body , Query )
+{	
 	var Payload = 
 	{
 		access_key : AccessKey , 
 		nonce : pkUuidv4(  )
 	} ;
+	if( Body != null )
+	{
+		Payload[ 'query_hash' ] = pkCrypto.createHash( 'sha512' ).update( pkQueryStringEncode( Body ) , 'utf-8' ).digest( 'hex' ) ;
+		Payload[ 'query_hash_alg' ] = 'SHA512' ;
+	}
 	
-	return pkJwt.sign( Payload , SecretKey ) ;
+	var Result = 
+	{
+		method : Method , 
+		url : 'https://api.upbit.com/' + Path + ( Query == null ? '' : pkQueryStringEncode( Query ) ) , 
+		headers : { Authorization : 'Bearer ' + pkJwt.sign( Payload , SecretKey ) }
+	} ;
+	if( Body != null )
+		Result[ 'json' ] = Body ;
+	
+	return Result ;
 }
 function g_getTokenBitstamp( AccessKey , SecretKey , Method , Path , Body )
 {
@@ -84,64 +101,140 @@ function g_getTokenBitstamp( AccessKey , SecretKey , Method , Path , Body )
 }
 
 // setting
-gApp.set( "view engine" , "ejs" ) ;
+gApp.set( 'views' , __dirname + '/views' ) ;
+gApp.set( 'view engine' , 'ejs' ) ;
+
 gApp.use( pkExpress.static( __dirname + '/' ) ) ;
 gApp.use( pkBodyParser.urlencoded( { extended : false } ) ) ;
 
 // routings
-// entry
 gApp.get
 ( 
 	'/' , 
 	( Req , Res ) => 
 	{
-		pkFs.readFile
+		var Context = 
+		{
+			ApiKey : gApiKeyObject , 
+			ApiTicker : gApiTickerArray , 
+			ApiOrder : gApiOrderObject , 
+			ApiAutoOrder : gApiAutoOrderObject , 
+			OrderForm : gOrderForm , 
+			ApiMessage : gMessage 
+		} ;
+		Res.render( "index" , Context ) ;
+	}
+) ;
+gApp.get
+( 
+	'/api_initDB' , 
+	( Req , Res ) => 
+	{
+		gApiKeyObject = null ;
+		gApiTickerArray = null ;
+		
+		gApiOrderObject = new Object(  ) ;
+		gApiAutoOrderObject = new Object(  ) ;
+		
+		var DBConnection = pkMySQL.createConnection
 		(
-			'./key.json' , 
-			'utf8' , 
-			function( Err , Data )
+			{
+				host : 'puppysss.cafe24.com' , 
+				user : 'puppysss' , 
+				password : Req.query.DBPW , 
+				database : 'puppysss' , 
+				port : '3306' 
+			}
+		) ;
+		DBConnection.connect(  ) ;
+		
+		DBConnection.query
+		(
+			'SELECT * FROM apiKey' , 
+			function ( Err , Rows , Fields )
 			{
 				if( Err )
-					gApiKeyObject = null ;
-				else
 				{
-					gApiKeyObject = JSON.parse( Data ) ;
-					gApiKeyObject.Message = new String(  ) ;
+					gMessage = Err ;
+					return ;
+				}
+				
+				gApiKeyObject = new Object(  ) ;
+				gApiKeyObject[ 'Upbit' ] = new Array(  ) ;
+				gApiKeyObject[ 'Bitstamp' ] = new Array(  ) ;
+				
+				for( var Key in Rows )
+				{
+					var ExchangeName = Rows[ Key ][ 'X' ] ;
+					var Index = Rows[ Key ][ 'Number' ] ;
+					var Name = Rows[ Key ][ 'Name' ] ; 
+					var AccessKey = Rows[ Key ][ 'AccessKey' ] ;
+					var SecretKey = Rows[ Key ][ 'SecretKey' ] ;
+					var TradeAccessKey = Rows[ Key ][ 'TradeAccessKey' ] ;
+					var TradeSecretKey = Rows[ Key ][ 'TradeSecretKey' ] ;
+					
+					ExchangeName = ( Buffer.isBuffer( ExchangeName ) ? ExchangeName.toString(  ) : ExchangeName ) ;
+					Name = ( Buffer.isBuffer( Name ) ? Name.toString(  ) : Name ) ;
+					AccessKey = ( Buffer.isBuffer( AccessKey ) ? AccessKey.toString(  ) : AccessKey ) ;
+					SecretKey = ( Buffer.isBuffer( SecretKey ) ? SecretKey.toString(  ) : SecretKey ) ;
+					TradeAccessKey = ( Buffer.isBuffer( TradeAccessKey ) ? TradeAccessKey.toString(  ) : TradeAccessKey ) ;
+					TradeSecretKey = ( Buffer.isBuffer( TradeSecretKey ) ? TradeSecretKey.toString(  ) : TradeSecretKey ) ;
+					
+					gApiKeyObject[ ExchangeName ][ Index ] = new Object(  ) ;
+					gApiKeyObject[ ExchangeName ][ Index ][ 'Name' ] = Name ;
+					gApiKeyObject[ ExchangeName ][ Index ][ 'AccessKey' ] = AccessKey ;
+					gApiKeyObject[ ExchangeName ][ Index ][ 'SecretKey' ] = SecretKey ;
+					gApiKeyObject[ ExchangeName ][ Index ][ 'TradeAccessKey' ] = TradeAccessKey ;
+					gApiKeyObject[ ExchangeName ][ Index ][ 'TradeSecretKey' ] = TradeSecretKey ;
+					gApiKeyObject[ ExchangeName ][ Index ][ 'AccountInfo' ] = null ;
+					gApiKeyObject[ ExchangeName ][ Index ][ 'OrderStatus' ] = 0 ;
 				}
 			}
 		) ;
-		pkFs.readFile
+		DBConnection.query
 		(
-			'./ticker.json' , 
-			'utf8' , 
-			function( Err , Data )
+			'SELECT * FROM apiTicker' , 
+			function ( Err , Rows , Fields )
 			{
 				if( Err )
-					gApiTickerObject = null ;
-				else
 				{
-					gApiTickerObject = JSON.parse( Data ) ;
+					gMessage = Err ;
+					return ;
+				}
+				
+				gApiTickerArray = new Array(  ) ;
+				
+				for( var Index in Rows )
+				{
+					var Ticker = Rows[ Index ][ 'Ticker' ] ;
+					
+					Ticker = ( Buffer.isBuffer( Ticker ) ? Ticker.toString(  ) : Ticker ) ;
+					
+					gApiTickerArray[ Index ] = Ticker ;
 				}
 			}
 		) ;
 		
+		DBConnection.end(  ) ;
+		
 		var Context = 
 		{
 			ApiKey : gApiKeyObject , 
-			ApiTicker : gApiTickerObject , 
+			ApiTicker : gApiTickerArray , 
 			ApiOrder : gApiOrderObject , 
 			ApiAutoOrder : gApiAutoOrderObject , 
-			OrderForm : gOrderForm 
+			OrderForm : gOrderForm , 
+			ApiMessage : gMessage 
 		} ;
 		Res.render( "index" , Context ) ;
 	}
 ) ;
 gApp.listen
 ( 
-	7777 , 
+	8001 , 
 	(  ) => 
 	{
-		console.log( "I'm listening." ) ;
+		gMessage = "I'm listening." ;
 	}
 ) ;
 
@@ -170,10 +263,11 @@ gApp.get
 		var Context = 
 		{
 			ApiKey : gApiKeyObject , 
-			ApiTicker : gApiTickerObject , 
+			ApiTicker : gApiTickerArray , 
 			ApiOrder : gApiOrderObject , 
 			ApiAutoOrder : gApiAutoOrderObject , 
-			OrderForm : gOrderForm 
+			OrderForm : gOrderForm , 
+			ApiMessage : gMessage 
 		} ;
 		Res.render( "index" , Context ) ;
 	}
@@ -193,10 +287,11 @@ gApp.get
 		var Context = 
 		{
 			ApiKey : gApiKeyObject , 
-			ApiTicker : gApiTickerObject , 
+			ApiTicker : gApiTickerArray , 
 			ApiOrder : gApiOrderObject , 
 			ApiAutoOrder : gApiAutoOrderObject , 
-			OrderForm : gOrderForm 
+			OrderForm : gOrderForm , 
+			ApiMessage : gMessage 
 		} ;
 		Res.render( "index" , Context ) ;
 	}
@@ -209,15 +304,16 @@ gApp.get
 		if( gApiKeyObject == null )
 			return ;
 		
-		
+		cancelAllOrders(  ) ;
 		
 		var Context = 
 		{
 			ApiKey : gApiKeyObject , 
-			ApiTicker : gApiTickerObject , 
+			ApiTicker : gApiTickerArray , 
 			ApiOrder : gApiOrderObject , 
 			ApiAutoOrder : gApiAutoOrderObject , 
-			OrderForm : gOrderForm 
+			OrderForm : gOrderForm , 
+			ApiMessage : gMessage 
 		} ;
 		Res.render( "index" , Context ) ;
 	}
@@ -232,37 +328,14 @@ gApp.post
 		updateAccounts(  ) ;
 		updateOrders(  ) ;
 		
-		gApiKeyObject.Message = "(티커 : 잔고 / 동결 / 평단)\n" ;
-		for( var Key in gApiKeyObject )
-		{
-			for( var Index in gApiKeyObject[ Key ] )
-			{
-				if( gApiKeyObject[ Key ][ Index ].Name != null )
-				{
-					gApiKeyObject.Message = gApiKeyObject.Message + '♠' + Key + '_' + gApiKeyObject[ Key ][ Index ].Name + '♠' + '\n' ;
-					for( var InfoIndex in gApiKeyObject[ Key ][ Index ].AccountInfo )
-					{
-						if( gApiKeyObject[ Key ][ Index ].AccountInfo != null )
-						{
-							gApiKeyObject.Message = gApiKeyObject.Message + 
-							gApiKeyObject[ Key ][ Index ].AccountInfo[ InfoIndex ].Ticker + ' : ' + 
-							gApiKeyObject[ Key ][ Index ].AccountInfo[ InfoIndex ].Balance + ' / ' + 
-							gApiKeyObject[ Key ][ Index ].AccountInfo[ InfoIndex ].Locked + ' / ' + 
-							gApiKeyObject[ Key ][ Index ].AccountInfo[ InfoIndex ].AvgPrice + 
-							'\n' ;
-						}
-					}
-				}
-			}
-		}
-		
 		var Context = 
 		{
 			ApiKey : gApiKeyObject , 
-			ApiTicker : gApiTickerObject , 
+			ApiTicker : gApiTickerArray , 
 			ApiOrder : gApiOrderObject , 
 			ApiAutoOrder : gApiAutoOrderObject , 
-			OrderForm : gOrderForm 
+			OrderForm : gOrderForm , 
+			ApiMessage : gMessage 
 		} ;
 		Res.render( "index" , Context ) ;
 	}
@@ -274,23 +347,12 @@ function updateAccounts(  )
 	if( gApiKeyObject == null )
 		return ;
 	
-	var Options ;
-	var Token ;
-	
-	console.log( "Updating the accounts." ) ;
-	
 	/* Account Status*/
 	// Upbit
 	if( gApiKeyObject.Upbit[ 0 ].Name != null )
 	{
-		Token = g_getTokenUpbit( gApiKeyObject.Upbit[ 0 ].AccessKey , gApiKeyObject.Upbit[ 0 ].SecretKey ) ;
-		Options = 
-		{
-			method : "GET" , 
-			url : "https://api.upbit.com/v1/accounts" , 
-			headers : { Authorization : `Bearer ${Token}` }
-		} ;
-
+		var Options = g_getTokenUpbit( gApiKeyObject.Upbit[ 0 ].AccessKey , gApiKeyObject.Upbit[ 0 ].SecretKey , 'GET' , 'v1/accounts' , null , null ) ;
+		
 		pkRequest
 		( 
 			Options , ( Err , Res , Body ) => 
@@ -314,13 +376,7 @@ function updateAccounts(  )
 	}
 	if( gApiKeyObject.Upbit[ 1 ].Name != null )
 	{
-		Token = g_getTokenUpbit( gApiKeyObject.Upbit[ 1 ].AccessKey , gApiKeyObject.Upbit[ 1 ].SecretKey ) ;
-		Options = 
-		{
-			method : "GET" , 
-			url : "https://api.upbit.com/v1/accounts" , 
-			headers : { Authorization : `Bearer ${Token}` }
-		} ;
+		var Options = g_getTokenUpbit( gApiKeyObject.Upbit[ 1 ].AccessKey , gApiKeyObject.Upbit[ 1 ].SecretKey , 'GET' , 'v1/accounts' , null , null ) ;
 
 		pkRequest
 		( 
@@ -345,13 +401,7 @@ function updateAccounts(  )
 	}
 	if( gApiKeyObject.Upbit[ 2 ].Name != null )
 	{
-		Token = g_getTokenUpbit( gApiKeyObject.Upbit[ 2 ].AccessKey , gApiKeyObject.Upbit[ 2 ].SecretKey ) ;
-		Options = 
-		{
-			method : "GET" , 
-			url : "https://api.upbit.com/v1/accounts" , 
-			headers : { Authorization : `Bearer ${Token}` }
-		} ;
+		var Options = g_getTokenUpbit( gApiKeyObject.Upbit[ 2 ].AccessKey , gApiKeyObject.Upbit[ 2 ].SecretKey , 'GET' , 'v1/accounts' , null , null ) ;
 
 		pkRequest
 		( 
@@ -481,26 +531,127 @@ function updateOrders(  )
 		
 	var TradeAccessKey ;
 	var TradeSecretKey ;
-	var Options ;
 	
 	// Upbit
-	TradeAccessKey = gApiKeyObject.Upbit[ 0 ].TradeAccessKey ;
-	TradeSecretKey = gApiKeyObject.Upbit[ 0 ].TradeSecretKey ;
+	TradeAccessKey = gApiKeyObject.Upbit[ 0 ].AccessKey ;
+	TradeSecretKey = gApiKeyObject.Upbit[ 0 ].SecretKey ;
 	if( TradeAccessKey != null && TradeSecretKey != null )
 	{
+		var Options = g_getTokenUpbit( TradeAccessKey , TradeSecretKey , 'GET' , 'v1/orders?' , { state : 'wait' } , { state : 'wait' } ) ;
 		
+		pkRequest
+		(
+			Options , ( Err , Res , Body ) => 
+			{
+				if( Err )
+					throw new Error( Err ) ;
+				
+				if( gApiKeyObject.Upbit[ 0 ].OrderStatus != 2 )
+				{
+					if( 'error' in Body == true || Body.length == 0 )
+					{
+						gApiKeyObject.Upbit[ 0 ].OrderStatus = 0 ;
+						gApiOrderObject[ 'Upbit_0' ] = null ;
+					}
+					else
+					{
+						gApiOrderObject[ 'Upbit_0' ] = new Array(  ) ;
+						for( var Index in Body )
+						{
+							gApiOrderObject[ 'Upbit_0' ][ Index ] = 
+							{
+								Id : Body[ Index ][ 'uuid' ] , 
+								Ticker : Body[ Index ][ 'market' ] , 
+								Type : Body[ Index ][ 'side' ] == 'bid' ? 'Buy' : 'Sell' , 
+								Price : Body[ Index ][ 'price' ] , 
+								Size : Body[ Index ][ 'remaining_volume' ] 
+							} ;
+						}
+						gApiKeyObject.Upbit[ 0 ].OrderStatus = 1 ;
+					}
+				}
+			}
+		) ;
 	}
-	TradeAccessKey = gApiKeyObject.Upbit[ 1 ].TradeAccessKey ;
-	TradeSecretKey = gApiKeyObject.Upbit[ 1 ].TradeSecretKey ;
+	TradeAccessKey = gApiKeyObject.Upbit[ 1 ].AccessKey ;
+	TradeSecretKey = gApiKeyObject.Upbit[ 1 ].SecretKey ;
 	if( TradeAccessKey != null && TradeSecretKey != null )
 	{
+		var Options = g_getTokenUpbit( TradeAccessKey , TradeSecretKey , 'GET' , 'v1/orders?' , { state : 'wait' } , { state : 'wait' } ) ;
 		
+		pkRequest
+		(
+			Options , ( Err , Res , Body ) => 
+			{
+				if( Err )
+					throw new Error( Err ) ;
+				
+				if( gApiKeyObject.Upbit[ 1 ].OrderStatus != 2 )
+				{
+					if( 'error' in Body == true || Body.length == 0 )
+					{
+						gApiKeyObject.Upbit[ 1 ].OrderStatus = 0 ;
+						gApiOrderObject[ 'Upbit_1' ] = null ;
+					}
+					else
+					{
+						gApiOrderObject[ 'Upbit_1' ] = new Array(  ) ;
+						for( var Index in Body )
+						{
+							gApiOrderObject[ 'Upbit_1' ][ Index ] = 
+							{
+								Id : Body[ Index ][ 'uuid' ] , 
+								Ticker : Body[ Index ][ 'market' ] , 
+								Type : Body[ Index ][ 'side' ] == 'bid' ? 'Buy' : 'Sell' , 
+								Price : Body[ Index ][ 'price' ] , 
+								Size : Body[ Index ][ 'remaining_volume' ] 
+							} ;
+						}
+						gApiKeyObject.Upbit[ 1 ].OrderStatus = 1 ;
+					}
+				}
+			}
+		) ;
 	}
-	TradeAccessKey = gApiKeyObject.Upbit[ 2 ].TradeAccessKey ;
-	TradeSecretKey = gApiKeyObject.Upbit[ 2 ].TradeSecretKey ;
+	TradeAccessKey = gApiKeyObject.Upbit[ 2 ].AccessKey ;
+	TradeSecretKey = gApiKeyObject.Upbit[ 2 ].SecretKey ;
 	if( TradeAccessKey != null && TradeSecretKey != null )
 	{
+		var Options = g_getTokenUpbit( TradeAccessKey , TradeSecretKey , 'GET' , 'v1/orders?' , { state : 'wait' } , { state : 'wait' } ) ;
 		
+		pkRequest
+		(
+			Options , ( Err , Res , Body ) => 
+			{
+				if( Err )
+					throw new Error( Err ) ;
+				
+				if( gApiKeyObject.Upbit[ 2 ].OrderStatus != 2 )
+				{
+					if( 'error' in Body == true || Body.length == 0 )
+					{
+						gApiKeyObject.Upbit[ 2 ].OrderStatus = 0 ;
+						gApiOrderObject[ 'Upbit_2' ] = null ;
+					}
+					else
+					{
+						gApiOrderObject[ 'Upbit_2' ] = new Array(  ) ;
+						for( var Index in Body )
+						{
+							gApiOrderObject[ 'Upbit_2' ][ Index ] = 
+							{
+								Id : Body[ Index ][ 'uuid' ] , 
+								Ticker : Body[ Index ][ 'market' ] , 
+								Type : Body[ Index ][ 'side' ] == 'bid' ? 'Buy' : 'Sell' , 
+								Price : Body[ Index ][ 'price' ] , 
+								Size : Body[ Index ][ 'remaining_volume' ] 
+							} ;
+						}
+						gApiKeyObject.Upbit[ 2 ].OrderStatus = 1 ;
+					}
+				}
+			}
+		) ;
 	}
 	
 	// Bitstamp
@@ -630,20 +781,40 @@ function updateOrders(  )
 }
 
 /* order */
-function checkValidation( Price , Size )
+function checkFatFinger( PlacerX , PlacerIndex , Placement , Price , Size , Interval )
 {
-	var Flag = false ;
-	
-	if( Price != null && Price != '' && Size != null && Size != '' )
+	switch( Placement )
 	{
-		if( parseFloat( Price ) > 0.0 && parseFloat( Size ) > 0.0 )
-		{
-			Flag = true ;
-		}
+		case 'LimitBuy' : 
+		case 'LimitSell' : 
+			if
+			( 
+				Number.isNaN( parseFloat( Price ) ) == true || 
+				parseFloat( Price ) <= 0.0 || 
+				Number.isNaN( parseFloat( Size ) ) == true || 
+				parseFloat( Size ) <= 0.0 
+			)
+				return false ;
+		break ;
+		
+		case 'AutoMarketBuy' : 
+		case 'AutoMarketSell' : 
+			if
+			( 
+				Number.isNaN( parseFloat( Size ) ) == true || 
+				parseFloat( Size ) <= 0.0 || 
+				Number.isNaN( parseInt( Interval ) ) == true || 
+				parseInt( Interval ) <= 0 
+			)
+				return false ;
+		break ;
+		default : 
+			return false ;
 	}
 	
-	return Flag ;
+	return true ;
 }
+
 function requestOrder( FormData , PlacerX , PlacerIndex )
 {
 	if( gApiKeyObject == null )
@@ -655,18 +826,18 @@ function requestOrder( FormData , PlacerX , PlacerIndex )
 		( gApiKeyObject[ PlacerX ][ PlacerIndex ].TradeSecretKey == null )
 	)
 	{
-		console.log( "거래 Api 키가 없습니다." ) ;
+		gMessage = "거래 Api 키가 없습니다." ;
 		return ;
 	}
 	else if
 	( gApiKeyObject[ PlacerX ][ PlacerIndex ].OrderStatus > 0 )
 	{
-		console.log( "주문이 실행 중입니다." ) ;
+		gMessage = "주문이 실행 중입니다." ;
 		return ;
 	}
-	else if( checkValidation( FormData.Price , FormData.Size ) == false )
+	else if( checkFatFinger( PlacerX , PlacerIndex , FormData.OrderPlacement , FormData.Price , FormData.Size , FormData.Interval ) == false )
 	{
-		console.log( "주문이 유효하지 않습니다." ) ;
+		gMessage = "주문이 유효하지 않습니다." ;
 		return ;
 	}
 	
@@ -677,6 +848,67 @@ function requestOrder( FormData , PlacerX , PlacerIndex )
 	switch( PlacerX )
 	{
 		case 'Upbit' : 
+			switch( FormData.OrderPlacement )
+			{
+				case 'LimitBuy' : 
+					var Body = 
+					{
+						market : FormData.Ticker , 
+						side : 'bid' , 
+						volume : FormData.Size , 
+						price : FormData.Price , 
+						ord_type : 'limit' 
+					} ;
+					var Options = g_getTokenUpbit( TradeAccessKey , TradeSecretKey , 'POST' , 'v1/orders' , Body , null ) ;
+					
+					pkRequest
+					(
+						Options , ( Err , Res , Body ) => 
+						{
+							if( Err )
+								throw new Error( Err ) ;
+							
+							if( 'error' in Body == true )
+							{
+								gMessage = "지정가 매수 주문 실패" + JSON.stringify( Body ) ;
+							}
+							else
+								gMessage = "지정가 매수 주문 성공" ;
+						}
+					) ;
+				break ;
+				case 'LimitSell' : 
+					var Body = 
+					{
+						market : FormData.Ticker , 
+						side : 'ask' , 
+						volume : FormData.Size , 
+						price : FormData.Price , 
+						ord_type : 'limit' 
+					} ;
+					var Options = g_getTokenUpbit( TradeAccessKey , TradeSecretKey , 'POST' , 'v1/orders' , Body , null ) ;
+					
+					pkRequest
+					(
+						Options , ( Err , Res , Body ) => 
+						{
+							if( Err )
+								throw new Error( Err ) ;
+							
+							if( 'error' in Body == true )
+							{
+								gMessage = "지정가 매도 주문 실패" + JSON.stringify( Body ) ;
+							}
+							else
+								gMessage = "지정가 매도 주문 성공" ;
+						}
+					) ;
+				break ;
+				case 'AutoMarketBuy' : 
+				break ;
+				case 'AutoMarketSell' : 
+				break ;
+			}
 		break ;
 		case 'Bitstamp' : 
 			switch( FormData.OrderPlacement )
@@ -699,11 +931,10 @@ function requestOrder( FormData , PlacerX , PlacerIndex )
 							
 							if( 'status' in ResultData == true )
 							{
-								console.log( "지정가 매수 주문 실패" ) ;
-								console.log( Body ) ;
+								gMessage = "지정가 매수 주문 실패" + JSON.stringify( Body ) ;
 							}
 							else
-								console.log( "지정가 매수 주문 성공" ) ;
+								gMessage = "지정가 매수 주문 성공" ;
 							
 						}
 					) ;
@@ -727,11 +958,10 @@ function requestOrder( FormData , PlacerX , PlacerIndex )
 							
 							if( 'status' in ResultData == true )
 							{
-								console.log( "지정가 매도 주문 실패" ) ;
-								console.log( Body ) ;
+								gMessage = "지정가 매도 주문 실패" + JSON.stringify( Body ) ;
 							}
 							else
-								console.log( "지정가 매도 주문 성공" ) ;
+								gMessage = "지정가 매도 주문 성공" ;
 							
 						}
 					) ;
@@ -834,12 +1064,11 @@ function requestIntervalOrder(  )
 					
 					if( 'status' in ResultData == true )
 					{
-						console.log( "자동 시장가 주문 실패" ) ;
-						console.log( Body ) ;
+						gMessage = "자동 시장가 주문 실패" + JSON.stringify( Body ) ;
 					}
 					else
 					{
-						console.log( "자동 시장가 주문 성공 : \n" + ResultData ) ;
+						gMessage = "자동 시장가 주문 성공 : \n" + Body ;
 					}
 				}
 			) ;
@@ -857,12 +1086,12 @@ function cancelOrder( PlacerX , PlacerIndex , OrderId )
 		( gApiKeyObject[ PlacerX ][ PlacerIndex ].TradeSecretKey == null )
 	)
 	{
-		console.log( "거래 Api 키가 없습니다." ) ;
+		gMessage = "거래 Api 키가 없습니다." ;
 		return ;
 	}
 	else if( gApiKeyObject[ PlacerX ][ PlacerIndex ].OrderStatus == 0 )
 	{
-		console.log( "없는 주문입니다." ) ;
+		gMessage = "없는 주문입니다." ;
 		return ;
 	}
 	
@@ -872,14 +1101,43 @@ function cancelOrder( PlacerX , PlacerIndex , OrderId )
 	switch( PlacerX )
 	{
 		case 'Upbit' : 
-			
+			if( gApiKeyObject[ PlacerX ][ PlacerIndex ].OrderStatus == 1 )
+			{
+				var RequestBody = 
+				{  
+					'uuid' : OrderId
+				} ;
+				var Options = g_getTokenUpbit( TradeAccessKey , TradeSecretKey , 'DELETE' , 'v1/order?' , RequestBody , RequestBody ) ;
+				pkRequest
+				(
+					Options , ( Err , Res , Body ) => 
+					{
+						if( Err )
+							throw new Error( Err ) ;
+						
+						if( 'error' in Body == true )
+						{
+							gMessage = "주문 취소 실패" + JSON.stringify( Body ) ;
+						}
+						else
+							gMessage = "주문 취소 성공" ;
+					}
+				) ;
+			}
+			else
+			{
+				clearInterval( gApiAutoOrderObject[ PlacerX + '_' + PlacerIndex ][ 'IntervalId' ] ) ;
+				gApiAutoOrderObject[ PlacerX + '_' + PlacerIndex ] = null ;
+				gApiKeyObject[ PlacerX ][ PlacerIndex ].OrderStatus = 0 ;
+				gMessage = "자동 시장가 주문 취소 성공" ;
+			}
 		break ;
 		case 'Bitstamp' : 
 			if( gApiKeyObject[ PlacerX ][ PlacerIndex ].OrderStatus == 1 )
 			{
 				var RequestBody = 
 				{  
-						'id' : OrderId
+					'id' : OrderId
 				} ;
 				var Result = g_getTokenBitstamp( TradeAccessKey , TradeSecretKey , 'POST' , 'v2/cancel_order/' , RequestBody ) ;
 				pkRequest
@@ -893,11 +1151,10 @@ function cancelOrder( PlacerX , PlacerIndex , OrderId )
 						
 						if( 'error' in ResultData == true )
 						{
-							console.log( "주문 취소 실패" ) ;
-							console.log( Body ) ;
+							gMessage = "주문 취소 실패" + JSON.stringify( Body ) ;
 						}
 						else
-							console.log( "주문 취소 성공" ) ;
+							gMessage = "주문 취소 성공" ;
 					}
 				) ;
 			}
@@ -905,8 +1162,36 @@ function cancelOrder( PlacerX , PlacerIndex , OrderId )
 			{
 				clearInterval( gApiAutoOrderObject[ PlacerX + '_' + PlacerIndex ][ 'IntervalId' ] ) ;
 				gApiAutoOrderObject[ PlacerX + '_' + PlacerIndex ] = null ;
-				console.log( "자동 시장가 주문 취소 성공" ) ;
+				gApiKeyObject[ PlacerX ][ PlacerIndex ].OrderStatus = 0 ;
+				gMessage = "자동 시장가 주문 취소 성공" ;
 			}
 		break ;
+	}
+}
+function cancelAllOrders(  )
+{
+	if( gApiKeyObject == null )
+		return ;
+	
+	for( var Key in gApiOrderObject )
+	{
+		var PlacerX = Key.split( '_' )[ 0 ] ;
+		var PlacerIndex = parseInt( Key.split( '_' )[ 1 ] ) ;
+		
+		for( var Index in gApiOrderObject[ Key ] )
+		{
+			var OrderId = gApiOrderObject[ Key ][ Index ][ 'Id' ] ;
+			cancelOrder( PlacerX , PlacerIndex , OrderId ) ;
+		}
+	}
+	for( var Key in gApiAutoOrderObject )
+	{
+		var PlacerX = Key.split( '_' )[ 0 ] ;
+		var PlacerIndex = parseInt( Key.split( '_' )[ 1 ] ) ;
+		
+		if( gApiAutoOrderObject[ Key ] != null )
+		{
+			cancelOrder( PlacerX , PlacerIndex , null ) ;
+		}
 	}
 }
