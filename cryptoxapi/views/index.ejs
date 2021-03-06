@@ -4,6 +4,12 @@
 		<title>trader</title>
 	</head>
 	<body>
+		<!-- db 정보 -->
+		<form action='/api_initDB' methode='get'>
+			<input type="text" name="DBPW" placeholder="비밀번호">
+			<input type="submit" value="DB갱신">
+		</form>
+		
 		<!-- 주문 -->
 		<form action='/api_placeOrder' methode='get'>
 			<% var selectTicker , selectPlacement , selectPlacer , inputPrice , inputSize , inputInterval ; %>
@@ -18,13 +24,11 @@
 			<p>
 				<select name='Ticker'>
 					<% if( ApiTicker != null ) { %>
-						<% for( var Key in ApiTicker ) { %>
-							<% for( var Index in ApiTicker[ Key ] ) { %>
-								<% if( selectTicker == ApiTicker[ Key ][ Index ] ) { %>
-									<option value=<%= ApiTicker[ Key ][ Index ] %> selected><%= ApiTicker[ Key ][ Index ] %></option>
-								<% } else { %>
-									<option value=<%= ApiTicker[ Key ][ Index ] %>><%= ApiTicker[ Key ][ Index ] %></option>
-								<% } %>
+						<% for( var Index in ApiTicker ) { %>
+							<% if( selectTicker == ApiTicker[ Index ] ) { %>
+								<option value=<%= ApiTicker[ Index ] %> selected><%= ApiTicker[ Index ] %></option>
+							<% } else { %>
+								<option value=<%= ApiTicker[ Index ] %>><%= ApiTicker[ Index ] %></option>
 							<% } %>
 						<% } %>
 					<% } %>
@@ -151,9 +155,38 @@
 		<!-- 계좌 조회 -->
 		<form action='/api_update' method='post'>
 			<p><input type='submit' value='업데이트'></p>
-			<% if( ApiKey != null ) { %>
-				<%- ApiKey.Message.replace(/\n/g, '<br>') %>
-			<% } %>
+			<table>
+				<tr>
+					<th>티커</th>
+					<th>#잔고</th>
+					<th>#동결</th>
+					<th>#평단</th>
+				</tr>
+				<% if( ApiKey != null ) { %>
+					<% for( var Key in ApiKey ) { %>
+						<% for( var Index in ApiKey[ Key ] ) { %>
+							<% if( ApiKey[ Key ][ Index ].Name != null ) { %>
+								<tr>
+									<th colspan="4"><%= ApiKey[ Key ][ Index ].Name %></th>
+								</tr>
+								<% for( var AccountIndex in ApiKey[ Key ][ Index ].AccountInfo ) { %>
+									<tr>
+										<td><%= ApiKey[ Key ][ Index ].AccountInfo[ AccountIndex ].Ticker %></td>
+										<td><%= ApiKey[ Key ][ Index ].AccountInfo[ AccountIndex ].Balance %></td>
+										<td><%= ApiKey[ Key ][ Index ].AccountInfo[ AccountIndex ].Locked %></td>
+										<td><%= ApiKey[ Key ][ Index ].AccountInfo[ AccountIndex ].AvgPrice %></td>
+									</tr>
+								<% } %>
+							<% } %>
+						<% } %>
+					<% } %>
+				<% } %>
+			</table>
 		</form>
+		
+		<!-- 로그 -->
+		<p>
+			<%= ApiMessage %>
+		</p>
 	</body>
 </html>
