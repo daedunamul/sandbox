@@ -74,13 +74,20 @@
 					<% } %>
 				</select>
 			</p>
-			<p>
-				<input type="text" name="Price" placeholder="가격" value=<%= inputPrice %>>
-				<input type="text" name="Size" placeholder="수량" value=<%= inputSize %>>
-				<input type="text" name="Interval" placeholder="시간 간격(1초 단위)" value=<%= inputInterval %>>
-				다시 한번 확인해주세요.
-				<input type="submit" value="주문 실행">
-			</p>
+			<table>
+				<tr>
+					<th>가격(Upbit 시장가 매수 시 매수 금액)</th>
+					<th>수량</th>
+					<th>시간 간격(1초 단위)</th>
+					<td>다시 한번 확인해주세요.</td>
+				</tr>
+				<tr>
+					<td><input type="text" name="Price" placeholder="가격" value=<%= inputPrice %>></td>
+					<td><input type="text" name="Size" placeholder="수량" value=<%= inputSize %>></td>
+					<td><input type="text" name="Interval" placeholder="시간 간격(1초 단위)" value=<%= inputInterval %>></td>
+					<td><input type="submit" value="주문 실행"></td>
+				</tr>
+			</table>
 		</form>
 		
 		<!-- 주문 모두 취소 -->
