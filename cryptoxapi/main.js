@@ -781,24 +781,34 @@ function updateOrders(  )
 }
 
 /* order */
-function checkFatFinger( PlacerX , PlacerIndex , Placement , Price , Size , Interval )
+function checkFatFinger( PlacerX , Placement , Price , Size , Interval )
 {
-	switch( Placement )
+	if( Placement == 'LimitBuy' || Placement == 'LimitSell' )
 	{
-		case 'LimitBuy' : 
-		case 'LimitSell' : 
+		if
+		( 
+			Number.isNaN( parseFloat( Price ) ) == true || 
+			parseFloat( Price ) <= 0.0 || 
+			Number.isNaN( parseFloat( Size ) ) == true || 
+			parseFloat( Size ) <= 0.0 
+		)
+			return false ;
+	}
+	else if( Placement == 'AutoMarketBuy' )
+	{
+		if( PlacerX == 'Upbit' )
+		{
 			if
 			( 
 				Number.isNaN( parseFloat( Price ) ) == true || 
 				parseFloat( Price ) <= 0.0 || 
-				Number.isNaN( parseFloat( Size ) ) == true || 
-				parseFloat( Size ) <= 0.0 
+				Number.isNaN( parseInt( Interval ) ) == true || 
+				parseInt( Interval ) <= 0 
 			)
 				return false ;
-		break ;
-		
-		case 'AutoMarketBuy' : 
-		case 'AutoMarketSell' : 
+		}
+		else
+		{
 			if
 			( 
 				Number.isNaN( parseFloat( Size ) ) == true || 
@@ -807,10 +817,21 @@ function checkFatFinger( PlacerX , PlacerIndex , Placement , Price , Size , Inte
 				parseInt( Interval ) <= 0 
 			)
 				return false ;
-		break ;
-		default : 
+		}
+	}
+	else if( Placement == 'AutoMarketSell' )
+	{
+		if
+		( 
+			Number.isNaN( parseFloat( Size ) ) == true || 
+			parseFloat( Size ) <= 0.0 || 
+			Number.isNaN( parseInt( Interval ) ) == true || 
+			parseInt( Interval ) <= 0 
+		)
 			return false ;
 	}
+	else
+		return false ;
 	
 	return true ;
 }
@@ -835,7 +856,7 @@ function requestOrder( FormData , PlacerX , PlacerIndex )
 		gMessage = "주문이 실행 중입니다." ;
 		return ;
 	}
-	else if( checkFatFinger( PlacerX , PlacerIndex , FormData.OrderPlacement , FormData.Price , FormData.Size , FormData.Interval ) == false )
+	else if( checkFatFinger( PlacerX , FormData.OrderPlacement , FormData.Price , FormData.Size , FormData.Interval ) == false )
 	{
 		gMessage = "주문이 유효하지 않습니다." ;
 		return ;
@@ -905,8 +926,34 @@ function requestOrder( FormData , PlacerX , PlacerIndex )
 					) ;
 				break ;
 				case 'AutoMarketBuy' : 
+					gApiAutoOrderObject[ PlacerX + '_' + PlacerIndex ] = 
+					{
+						Ticker : FormData.Ticker , 
+						Type : 'Buy' , 
+						Size : FormData.Price , 
+						Interval : parseInt( parseFloat( FormData.Interval ) * 1000 ) , 
+						IntervalId : setInterval
+						(
+							requestIntervalOrder.bind( { X : PlacerX , Index : PlacerIndex } ) , 
+							parseInt( parseFloat( FormData.Interval ) * 1000 )
+						)
+					} ;
+					gApiKeyObject[ PlacerX ][ PlacerIndex ].OrderStatus = 2 ;
 				break ;
 				case 'AutoMarketSell' : 
+					gApiAutoOrderObject[ PlacerX + '_' + PlacerIndex ] = 
+					{
+						Ticker : FormData.Ticker , 
+						Type : 'Sell' , 
+						Size : FormData.Size , 
+						Interval : parseInt( parseFloat( FormData.Interval ) * 1000 ) , 
+						IntervalId : setInterval
+						(
+							requestIntervalOrder.bind( { X : PlacerX , Index : PlacerIndex } ) , 
+							parseInt( parseFloat( FormData.Interval ) * 1000 )
+						)
+					} ;
+					gApiKeyObject[ PlacerX ][ PlacerIndex ].OrderStatus = 2 ;
 				break ;
 			}
 		break ;
@@ -1027,7 +1074,49 @@ function requestIntervalOrder(  )
 	switch( this.X )
 	{
 		case 'Upbit' : 
+			var Body ;
+			switch( gApiAutoOrderObject[ this.X + '_' + this.Index ][ 'Type' ] )
+			{
+				case 'Buy' : 
+					Body = 
+					{
+						market : gApiAutoOrderObject[ this.X + '_' + this.Index ][ 'Ticker' ] , 
+						side : 'bid' , 
+						price : gApiAutoOrderObject[ this.X + '_' + this.Index ][ 'Size' ] , 
+						ord_type : 'price' 
+					} ;
+				break ;
+				case 'Sell' : 
+					Body = 
+					{
+						market : gApiAutoOrderObject[ this.X + '_' + this.Index ][ 'Ticker' ] , 
+						side : 'ask' , 
+						volume : gApiAutoOrderObject[ this.X + '_' + this.Index ][ 'Size' ] , 
+						ord_type : 'market' 
+					} ;
+				break ;
+			}
+			var Options = g_getTokenUpbit( TradeAccessKey , TradeSecretKey , 'POST' , 'v1/orders' , Body , null ) ;
+			
+			pkRequest
+			(
+				Options , ( Err , Res , Body ) => 
+				{
+					if( Err )
+						throw new Error( Err ) ;
+					
+					if( 'error' in Body == true )
+					{
+						gMessage = "자동 시장가 주문 실패" + JSON.stringify( Body ) ;
+					}
+					else
+					{
+						gMessage = "자동 시장가 주문 성공 : \n" + Body ;
+					}
+				}
+			) ;
 		break ;
+		
 		case 'Bitstamp' : 
 			var RequestBody = 
 			{  
